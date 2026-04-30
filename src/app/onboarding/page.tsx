@@ -5,6 +5,33 @@ import { useRouter } from "next/navigation";
 import { useTonAddress, useTonConnectUI } from "@tonconnect/ui-react";
 import { useGames, useMe, useUpdateMe } from "@/hooks/api";
 
+type WalletInfo = {
+  appName: string;
+  name: string;
+  imageUrl?: string;
+  aboutUrl?: string;
+  universalLink?: string;
+  deepLink?: string;
+  bridgeUrl?: string;
+  jsBridgeKey?: string;
+};
+
+function openInTelegram(url: string) {
+  const tg = (window as unknown as {
+    Telegram?: { WebApp?: { openLink?: (u: string, opts?: object) => void; openTelegramLink?: (u: string) => void } };
+  }).Telegram?.WebApp;
+  if (url.startsWith("https://t.me/") && tg?.openTelegramLink) {
+    tg.openTelegramLink(url);
+    return "openTelegramLink";
+  }
+  if (tg?.openLink) {
+    tg.openLink(url, { try_instant_view: false });
+    return "openLink";
+  }
+  window.open(url, "_blank");
+  return "window.open";
+}
+
 const MANIFEST_URL =
   process.env.NEXT_PUBLIC_TONCONNECT_MANIFEST_URL ??
   "https://raw.githubusercontent.com/SalvatoreCampagnese/ezchamp-manifest/refs/heads/main/tonconnect-manifest.json";
@@ -20,6 +47,8 @@ export default function OnboardingPage() {
   const router = useRouter();
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
+  const [wallets, setWallets] = useState<WalletInfo[]>([]);
+  const [showFallback, setShowFallback] = useState(false);
 
   // ───────── debug log ─────────
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -87,6 +116,20 @@ export default function OnboardingPage() {
     };
   }, [tonConnectUI, log]);
 
+  // Load the wallet list so we can offer a fallback picker.
+  useEffect(() => {
+    if (!tonConnectUI) return;
+    (async () => {
+      try {
+        const list = (await tonConnectUI.getWallets()) as WalletInfo[];
+        setWallets(list);
+        log("info", `wallet list loaded: ${list.map((w) => w.appName).join(", ")}`);
+      } catch (e) {
+        log("error", `getWallets failed: ${String(e)}`);
+      }
+    })();
+  }, [tonConnectUI, log]);
+
   // Persist wallet address as soon as it's available.
   useEffect(() => {
     if (me.data && tonAddress && tonAddress !== me.data.wallet_address) {
@@ -106,80 +149,93 @@ export default function OnboardingPage() {
   const shortAddr = (a: string) => `${a.slice(0, 6)}…${a.slice(-6)}`;
 
   function probeModalDom(label: string) {
-    // 1. SDK-side state.
     try {
       const m = (tonConnectUI as unknown as { modal?: { state?: unknown } }).modal;
       log("info", `${label}: sdk modal.state=${JSON.stringify(m?.state ?? null)}`);
     } catch (e) {
       log("warn", `${label}: sdk modal.state probe threw: ${String(e)}`);
     }
+    log("info", `${label}: body.className='${document.body.className}'`);
 
-    // 2. Every body child — tag, id, classes, child count, position, size.
-    const kids = Array.from(document.body.children);
-    log("info", `${label}: body has ${kids.length} children`);
-    kids.forEach((n, i) => {
-      const el = n as HTMLElement;
+    // Walk the ENTIRE document (not just body children) for any tc/tonconnect
+    // element and any shadow-host. Cheap on a small Mini App.
+    const all = document.querySelectorAll<HTMLElement>("*");
+    const matches: HTMLElement[] = [];
+    let shadowCount = 0;
+    all.forEach((el) => {
+      if (el.shadowRoot) shadowCount++;
+      const id = el.id || "";
+      const cls = typeof el.className === "string" ? el.className : "";
+      if (
+        id.startsWith("tc-") ||
+        id.includes("tonconnect") ||
+        cls.startsWith("tc-") ||
+        cls.includes(" tc-") ||
+        cls.includes("tonconnect") ||
+        el.tagName.toLowerCase().startsWith("tc-")
+      ) {
+        matches.push(el);
+      }
+    });
+    log("info", `${label}: total elements=${all.length} shadowHosts=${shadowCount} tc-matches=${matches.length}`);
+    matches.slice(0, 8).forEach((el, i) => {
       const cs = window.getComputedStyle(el);
       const r = el.getBoundingClientRect();
-      const cls = el.className && typeof el.className === "string" ? el.className.slice(0, 60) : "";
+      const cls = typeof el.className === "string" ? el.className.slice(0, 50) : "";
       log(
         "info",
-        `  [${i}] <${el.tagName.toLowerCase()}` +
+        `  tc[${i}] <${el.tagName.toLowerCase()}` +
           `${el.id ? "#" + el.id : ""}` +
           `${cls ? "." + cls.replace(/\s+/g, ".") : ""}> ` +
-          `c=${el.children.length} pos=${cs.position} ` +
-          `size=${Math.round(r.width)}x${Math.round(r.height)} ` +
-          `top=${Math.round(r.top)} z=${cs.zIndex} disp=${cs.display} op=${cs.opacity}`,
+          `disp=${cs.display} pos=${cs.position} z=${cs.zIndex} ` +
+          `size=${Math.round(r.width)}x${Math.round(r.height)} top=${Math.round(r.top)} op=${cs.opacity}`,
       );
     });
 
-    // 3. Hunt anything tc-related, anywhere (including shadow-host candidates).
-    const explicit = document.getElementById("tc-widget-root");
-    log("info", `${label}: getElementById('tc-widget-root') = ${explicit ? "FOUND" : "null"}`);
-    if (explicit) {
-      const cs = window.getComputedStyle(explicit);
-      const r = explicit.getBoundingClientRect();
-      log(
-        "info",
-        `  → tc-widget-root: pos=${cs.position} size=${Math.round(r.width)}x${Math.round(r.height)} ` +
-          `top=${Math.round(r.top)} z=${cs.zIndex} disp=${cs.display} op=${cs.opacity} ` +
-          `children=${explicit.children.length}`,
-      );
-      if (explicit.children.length > 0) {
-        const first = explicit.children[0] as HTMLElement;
-        const fcs = window.getComputedStyle(first);
-        const fr = first.getBoundingClientRect();
-        log(
-          "info",
-          `  → first child <${first.tagName.toLowerCase()}${first.id ? "#" + first.id : ""}>: ` +
-            `pos=${fcs.position} size=${Math.round(fr.width)}x${Math.round(fr.height)} ` +
-            `top=${Math.round(fr.top)} z=${fcs.zIndex} disp=${fcs.display} op=${fcs.opacity} ` +
-            `transform=${fcs.transform.slice(0, 40)}`,
-        );
-      }
-    }
-
-    // 4. Anything with data-tc-* attribute.
-    const dataTc = document.querySelectorAll<HTMLElement>("[data-tc-modal-state], [data-tc-wallets-modal-container], [data-tc-modal]");
-    log("info", `${label}: [data-tc-*] count=${dataTc.length}`);
-    dataTc.forEach((el, i) => {
-      const cs = window.getComputedStyle(el);
-      const r = el.getBoundingClientRect();
-      log(
-        "info",
-        `  data-tc[${i}] <${el.tagName.toLowerCase()}> ` +
-          `size=${Math.round(r.width)}x${Math.round(r.height)} top=${Math.round(r.top)} ` +
-          `disp=${cs.display} op=${cs.opacity} z=${cs.zIndex}`,
-      );
-    });
-
-    // 5. Viewport.
     log(
       "info",
       `${label}: vp=${window.innerWidth}x${window.innerHeight} ` +
-        `vv=${window.visualViewport?.width ?? "?"}x${window.visualViewport?.height ?? "?"} ` +
-        `scroll=${window.scrollY}`,
+        `vv=${window.visualViewport?.width ?? "?"}x${window.visualViewport?.height ?? "?"}`,
     );
+  }
+
+  // ───── Fallback connect paths ─────
+  async function tryOpenSingleWallet(appName: string) {
+    log("info", `openSingleWalletModal('${appName}') →`);
+    try {
+      await (
+        tonConnectUI as unknown as { openSingleWalletModal: (n: string) => Promise<void> }
+      ).openSingleWalletModal(appName);
+      log("info", "openSingleWalletModal resolved");
+      setTimeout(() => probeModalDom(`single-modal +500ms`), 500);
+    } catch (e) {
+      log("error", `openSingleWalletModal threw: ${String(e)}`);
+    }
+  }
+
+  async function tryDirectUniversalLink(w: WalletInfo) {
+    log("info", `direct universal link for ${w.appName}`);
+    if (!w.universalLink || !w.bridgeUrl) {
+      log("error", `wallet ${w.appName} has no universalLink/bridgeUrl`);
+      return;
+    }
+    try {
+      const url = (
+        tonConnectUI as unknown as {
+          connector: {
+            connect: (s: { universalLink: string; bridgeUrl: string }) => string;
+          };
+        }
+      ).connector.connect({
+        universalLink: w.universalLink,
+        bridgeUrl: w.bridgeUrl,
+      });
+      log("info", `connect() returned URL (len=${url.length}): ${url.slice(0, 80)}…`);
+      const opener = openInTelegram(url);
+      log("info", `opened via ${opener}`);
+    } catch (e) {
+      log("error", `connector.connect threw: ${String(e)}`);
+    }
   }
 
   async function handleConnect() {
@@ -291,6 +347,43 @@ export default function OnboardingPage() {
               </button>
               {connectError && (
                 <p className="mt-3 text-sm text-red-400">{connectError}</p>
+              )}
+
+              <button
+                onClick={() => setShowFallback((s) => !s)}
+                className="mt-4 w-full text-[0.7rem] tracking-[0.18em] uppercase text-white/55 hover:text-white"
+              >
+                {showFallback ? "Hide" : "Modal not opening?"} · pick wallet directly
+              </button>
+
+              {showFallback && (
+                <div className="mt-3 grid gap-2">
+                  {wallets.length === 0 && (
+                    <p className="text-xs text-white/45">Loading wallets…</p>
+                  )}
+                  {wallets.map((w) => (
+                    <div
+                      key={w.appName}
+                      className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2"
+                    >
+                      <span className="text-sm text-white/85 truncate">{w.name}</span>
+                      <div className="flex gap-1.5">
+                        <button
+                          onClick={() => tryOpenSingleWallet(w.appName)}
+                          className="text-[0.65rem] tracking-[0.16em] uppercase px-2 py-1 rounded border border-neon-cyan/40 text-neon-cyan"
+                        >
+                          Modal
+                        </button>
+                        <button
+                          onClick={() => tryDirectUniversalLink(w)}
+                          className="text-[0.65rem] tracking-[0.16em] uppercase px-2 py-1 rounded border border-neon-magenta/50 text-neon-magenta"
+                        >
+                          Direct
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </>
           )}
