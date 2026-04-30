@@ -12,6 +12,9 @@ export const PATCH = withAuth(async (req: NextRequest, user) => {
   if (typeof body.wallet_address === "string") {
     updates.wallet_address = body.wallet_address;
     updates.wallet_linked_at = new Date().toISOString();
+  } else if (body.wallet_address === null) {
+    updates.wallet_address = null;
+    updates.wallet_linked_at = null;
   }
   if (typeof body.current_game_id === "string" || body.current_game_id === null) {
     updates.current_game_id = body.current_game_id;

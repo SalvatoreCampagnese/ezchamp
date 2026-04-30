@@ -107,12 +107,31 @@ function Match() {
       {/* Accept */}
       {m.status === "open" && !inMatch && (
         <section className="flex flex-col gap-3">
-          <button onClick={onAccept} disabled={accepting} className="btn-neon">
+          {!ESCROW && (
+            <div
+              className="card p-3 text-center"
+              style={{ borderColor: "rgba(255,80,120,0.4)" }}
+            >
+              <div className="font-display text-[0.7rem] tracking-[0.18em] uppercase text-red-400">
+                Escrow not configured
+              </div>
+              <div className="text-[0.7rem] text-white/55 mt-1">
+                Set <code>NEXT_PUBLIC_TON_ESCROW_ADDRESS</code> in Vercel and redeploy.
+              </div>
+            </div>
+          )}
+          <button onClick={onAccept} disabled={accepting || !ESCROW} className="btn-neon">
             {accepting ? "Sending…" : `Accept & Pay ${m.stake_ton} TON`}
           </button>
-          <p className="text-[0.65rem] text-white/45 text-center">
-            Funds escrowed at <code className="text-white/65">{ESCROW.slice(0, 6)}…{ESCROW.slice(-4)}</code>. Match locks once payment confirms.
-          </p>
+          {ESCROW && (
+            <p className="text-[0.65rem] text-white/45 text-center">
+              Funds escrowed at{" "}
+              <code className="text-white/65">
+                {ESCROW.slice(0, 6)}…{ESCROW.slice(-4)}
+              </code>
+              . Match locks once payment confirms.
+            </p>
+          )}
         </section>
       )}
 

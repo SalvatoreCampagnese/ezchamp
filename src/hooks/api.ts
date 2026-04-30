@@ -32,7 +32,7 @@ export const useMe = () =>
 export const useUpdateMe = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (patch: Partial<Pick<User, "wallet_address" | "current_game_id">>) =>
+    mutationFn: (patch: { wallet_address?: string | null; current_game_id?: string | null }) =>
       api<{ user: User }>("/api/me", { method: "PATCH", body: JSON.stringify(patch) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["me"] }),
   });

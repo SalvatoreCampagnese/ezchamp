@@ -200,15 +200,38 @@ function PostMatch() {
         </div>
       </section>
 
+      {!ESCROW && (
+        <div
+          className="card p-3 text-center"
+          style={{ borderColor: "rgba(255,80,120,0.4)" }}
+        >
+          <div className="font-display text-[0.7rem] tracking-[0.18em] uppercase text-red-400">
+            Escrow not configured
+          </div>
+          <div className="text-[0.7rem] text-white/55 mt-1">
+            Set <code>NEXT_PUBLIC_TON_ESCROW_ADDRESS</code> in Vercel and redeploy.
+          </div>
+        </div>
+      )}
+
       {err && <p className="text-red-400 text-sm">⚠ {err}</p>}
 
-      <button onClick={onSubmit} disabled={!valid || step !== "form"} className="btn-neon">
+      <button
+        onClick={onSubmit}
+        disabled={!valid || step !== "form" || !ESCROW}
+        className="btn-neon"
+      >
         {step === "paying" ? "Confirm in your wallet…" : `Post & Pay ${stake} TON`}
       </button>
 
-      <p className="text-[0.65rem] text-white/40 text-center">
-        Funds escrowed at <code className="text-white/60">{ESCROW.slice(0, 6)}…{ESCROW.slice(-4)}</code>
-      </p>
+      {ESCROW && (
+        <p className="text-[0.65rem] text-white/40 text-center">
+          Funds escrowed at{" "}
+          <code className="text-white/60">
+            {ESCROW.slice(0, 6)}…{ESCROW.slice(-4)}
+          </code>
+        </p>
+      )}
     </div>
   );
 }

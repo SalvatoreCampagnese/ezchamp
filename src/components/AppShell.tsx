@@ -3,7 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useTonAddress, useTonConnectUI } from "@tonconnect/ui-react";
-import { useMe } from "@/hooks/api";
+import { useMe, useUpdateMe } from "@/hooks/api";
 
 type NavItem = { href: string; label: string; icon: ReactNode };
 
@@ -35,8 +35,26 @@ export function AppShell({
   const pathname = usePathname();
   const tonAddress = useTonAddress();
   const me = useMe();
+  const updateMe = useUpdateMe();
   const [tonConnectUI] = useTonConnectUI();
   const [open, setOpen] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+
+  async function handleDisconnect() {
+    if (disconnecting) return;
+    setDisconnecting(true);
+    try {
+      // Clear TonConnect's local cache (tonAddress goes null on next render).
+      try { await tonConnectUI.disconnect(); } catch { /* noop */ }
+      // Clear the persisted wallet on the server so the header doesn't keep
+      // showing the old address via the me.data fallback.
+      try { await updateMe.mutateAsync({ wallet_address: null }); } catch { /* noop */ }
+    } finally {
+      setDisconnecting(false);
+      setOpen(false);
+      router.replace("/onboarding");
+    }
+  }
 
   // Close drawer on route change.
   useEffect(() => {
@@ -165,13 +183,14 @@ export function AppShell({
               </button>
               {wallet && (
                 <button
-                  onClick={async () => {
-                    try { await tonConnectUI.disconnect(); } catch { /* noop */ }
-                  }}
+                  onClick={handleDisconnect}
+                  disabled={disconnecting}
                   className="sidebar-link is-danger"
                 >
                   <span className="sidebar-link-icon"><IconLogout /></span>
-                  <span className="flex-1 text-left">Disconnect wallet</span>
+                  <span className="flex-1 text-left">
+                    {disconnecting ? "Disconnecting…" : "Disconnect wallet"}
+                  </span>
                 </button>
               )}
             </div>
