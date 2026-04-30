@@ -105,6 +105,39 @@ export default function OnboardingPage() {
   const walletConnected = !!(tonAddress || me.data?.wallet_address);
   const shortAddr = (a: string) => `${a.slice(0, 6)}…${a.slice(-6)}`;
 
+  function probeModalDom(label: string) {
+    const root = document.querySelector("tc-root") as HTMLElement | null;
+    if (!root) {
+      log("warn", `${label}: <tc-root> NOT in DOM`);
+      return;
+    }
+    const hasShadow = !!root.shadowRoot;
+    const cs = window.getComputedStyle(root);
+    const rect = root.getBoundingClientRect();
+    log(
+      "info",
+      `${label}: tc-root display=${cs.display} vis=${cs.visibility} z=${cs.zIndex} ` +
+        `pos=${cs.position} size=${Math.round(rect.width)}x${Math.round(rect.height)} ` +
+        `shadow=${hasShadow ? "yes" : "NO"}`,
+    );
+    if (hasShadow) {
+      const overlay = root.shadowRoot!.querySelector('[class*="modal"], [class*="Modal"]') as HTMLElement | null;
+      if (overlay) {
+        const ocs = window.getComputedStyle(overlay);
+        const orect = overlay.getBoundingClientRect();
+        log(
+          "info",
+          `${label}: modal el display=${ocs.display} vis=${ocs.visibility} ` +
+            `opacity=${ocs.opacity} size=${Math.round(orect.width)}x${Math.round(orect.height)} ` +
+            `top=${Math.round(orect.top)}`,
+        );
+      } else {
+        log("warn", `${label}: no modal element in shadowRoot (children=${root.shadowRoot!.children.length})`);
+      }
+    }
+    log("info", `${label}: viewport=${window.innerWidth}x${window.innerHeight} scroll=${window.scrollY}`);
+  }
+
   async function handleConnect() {
     log("info", "connect button clicked");
     if (!tonConnectUI) {
@@ -115,9 +148,13 @@ export default function OnboardingPage() {
     setConnectError(null);
     setConnecting(true);
     try {
+      probeModalDom("pre-open");
       log("info", "calling tonConnectUI.openModal()…");
       await tonConnectUI.openModal();
       log("info", "openModal() resolved");
+      // The modal mounts asynchronously — re-probe after a tick.
+      setTimeout(() => probeModalDom("post-open +0ms"), 0);
+      setTimeout(() => probeModalDom("post-open +500ms"), 500);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       log("error", `openModal() threw: ${msg}`);
