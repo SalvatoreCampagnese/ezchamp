@@ -1,9 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTonAddress, useTonConnectUI } from "@tonconnect/ui-react";
 import { useGames, useMe, useUpdateMe } from "@/hooks/api";
+
+const MANIFEST_URL =
+  process.env.NEXT_PUBLIC_TONCONNECT_MANIFEST_URL ??
+  "https://raw.githubusercontent.com/SalvatoreCampagnese/ezchamp-manifest/refs/heads/main/tonconnect-manifest.json";
+
+type LogEntry = { t: string; level: "info" | "warn" | "error"; msg: string };
 
 export default function OnboardingPage() {
   const me = useMe();
@@ -15,30 +21,107 @@ export default function OnboardingPage() {
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
 
+  // ───────── debug log ─────────
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [debugOpen, setDebugOpen] = useState(true);
+  const log = useCallback((level: LogEntry["level"], msg: string) => {
+    const t = new Date().toISOString().slice(11, 23);
+    // eslint-disable-next-line no-console
+    console[level === "error" ? "error" : level === "warn" ? "warn" : "log"](`[ezc] ${msg}`);
+    setLogs((prev) => [...prev.slice(-49), { t, level, msg }]);
+  }, []);
+
+  // Capture window errors / unhandled rejections so we don't miss anything.
+  useEffect(() => {
+    const onErr = (e: ErrorEvent) => log("error", `window.error: ${e.message}`);
+    const onRej = (e: PromiseRejectionEvent) =>
+      log("error", `unhandledrejection: ${String(e.reason?.message ?? e.reason)}`);
+    window.addEventListener("error", onErr);
+    window.addEventListener("unhandledrejection", onRej);
+    return () => {
+      window.removeEventListener("error", onErr);
+      window.removeEventListener("unhandledrejection", onRej);
+    };
+  }, [log]);
+
+  // Initial environment dump + manifest fetch probe.
+  const probedRef = useRef(false);
+  useEffect(() => {
+    if (probedRef.current) return;
+    probedRef.current = true;
+
+    log("info", `manifest = ${MANIFEST_URL}`);
+    log("info", `origin   = ${window.location.origin}`);
+    log("info", `UA       = ${navigator.userAgent.slice(0, 80)}`);
+    const tg = (window as unknown as { Telegram?: { WebApp?: unknown } }).Telegram?.WebApp;
+    log("info", `Telegram.WebApp = ${tg ? "present" : "MISSING"}`);
+
+    fetch(MANIFEST_URL, { cache: "no-store" })
+      .then(async (r) => {
+        log(r.ok ? "info" : "error", `manifest fetch → HTTP ${r.status}`);
+        if (r.ok) {
+          try {
+            const j = await r.json();
+            log("info", `manifest.url=${j.url} name=${j.name}`);
+          } catch (e) {
+            log("error", `manifest JSON parse failed: ${String(e)}`);
+          }
+        }
+      })
+      .catch((e) => log("error", `manifest fetch threw: ${String(e?.message ?? e)}`));
+  }, [log]);
+
+  // Subscribe to TonConnect status changes.
+  useEffect(() => {
+    if (!tonConnectUI) {
+      log("warn", "tonConnectUI is null at mount");
+      return;
+    }
+    log("info", `tonConnectUI ready · connected=${tonConnectUI.connected}`);
+    const unsub = tonConnectUI.onStatusChange(
+      (w) => log("info", `status → ${w ? `connected ${w.account?.address?.slice(0, 8)}…` : "disconnected"}`),
+      (err) => log("error", `tonConnect error: ${String(err?.message ?? err)}`),
+    );
+    return () => {
+      unsub();
+    };
+  }, [tonConnectUI, log]);
+
   // Persist wallet address as soon as it's available.
   useEffect(() => {
     if (me.data && tonAddress && tonAddress !== me.data.wallet_address) {
+      log("info", `persisting wallet ${tonAddress.slice(0, 8)}…`);
       updateMe.mutate({ wallet_address: tonAddress });
     }
-  }, [tonAddress, me.data?.wallet_address]);
+  }, [tonAddress, me.data?.wallet_address, log, me.data, updateMe]);
 
   // Once wallet AND game are set, leave onboarding.
   useEffect(() => {
     if (me.data?.wallet_address && me.data?.current_game_id) {
       router.replace("/");
     }
-  }, [me.data?.wallet_address, me.data?.current_game_id]);
+  }, [me.data?.wallet_address, me.data?.current_game_id, router]);
 
   const walletConnected = !!(tonAddress || me.data?.wallet_address);
   const shortAddr = (a: string) => `${a.slice(0, 6)}…${a.slice(-6)}`;
 
   async function handleConnect() {
+    log("info", "connect button clicked");
+    if (!tonConnectUI) {
+      log("error", "tonConnectUI is null — provider not mounted");
+      setConnectError("TON Connect not initialized.");
+      return;
+    }
     setConnectError(null);
     setConnecting(true);
     try {
+      log("info", "calling tonConnectUI.openModal()…");
       await tonConnectUI.openModal();
+      log("info", "openModal() resolved");
     } catch (e) {
-      setConnectError(e instanceof Error ? e.message : "Couldn't open wallet.");
+      const msg = e instanceof Error ? e.message : String(e);
+      log("error", `openModal() threw: ${msg}`);
+      setConnectError(msg || "Couldn't open wallet.");
     } finally {
       setConnecting(false);
     }
@@ -46,15 +129,24 @@ export default function OnboardingPage() {
 
   async function handleDisconnect() {
     try {
+      log("info", "disconnect()");
       await tonConnectUI.disconnect();
-    } catch {
-      /* swallow */
+    } catch (e) {
+      log("error", `disconnect threw: ${String(e)}`);
     }
+  }
+
+  function copyLogs() {
+    const text = logs.map((l) => `${l.t} [${l.level}] ${l.msg}`).join("\n");
+    navigator.clipboard?.writeText(text).then(
+      () => log("info", "logs copied to clipboard"),
+      () => log("warn", "clipboard write failed"),
+    );
   }
 
   return (
     <main className="esports-canvas">
-      <div className="relative z-10 flex flex-col gap-8 px-5 pt-10 pb-16 max-w-md mx-auto">
+      <div className="relative z-10 flex flex-col gap-8 px-5 pt-10 pb-44 max-w-md mx-auto">
         {/* HERO */}
         <header className="flex flex-col items-center text-center gap-4">
           <span className="chip">
@@ -117,9 +209,7 @@ export default function OnboardingPage() {
                 {connecting ? "Opening wallet…" : "⚡ Connect TON Wallet"}
               </button>
               {connectError && (
-                <p className="mt-3 text-sm text-red-400">
-                  {connectError}
-                </p>
+                <p className="mt-3 text-sm text-red-400">{connectError}</p>
               )}
             </>
           )}
@@ -160,6 +250,54 @@ export default function OnboardingPage() {
         <footer className="pt-2 text-center text-[0.7rem] tracking-[0.18em] uppercase text-white/35">
           Powered by TON · Built for Telegram
         </footer>
+      </div>
+
+      {/* DEBUG PANEL */}
+      <div className="fixed bottom-0 inset-x-0 z-50 max-w-md mx-auto px-3 pb-3">
+        <div
+          className="rounded-t-xl rounded-b-xl border border-white/10 bg-black/80 backdrop-blur"
+          style={{ boxShadow: "0 -10px 30px rgba(0,0,0,0.5)" }}
+        >
+          <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
+            <button
+              onClick={() => setDebugOpen((o) => !o)}
+              className="text-[0.7rem] tracking-[0.18em] uppercase text-white/70"
+            >
+              {debugOpen ? "▼" : "▲"} Debug ({logs.length})
+            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={copyLogs}
+                className="text-[0.7rem] tracking-[0.18em] uppercase text-neon-cyan"
+              >
+                Copy
+              </button>
+              <button
+                onClick={() => setLogs([])}
+                className="text-[0.7rem] tracking-[0.18em] uppercase text-white/50"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+          {debugOpen && (
+            <pre
+              className="px-3 py-2 text-[10px] leading-snug overflow-auto"
+              style={{ maxHeight: "32vh", whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+            >
+              {logs.length === 0
+                ? "(no logs yet)"
+                : logs
+                    .map(
+                      (l) =>
+                        `${l.t} ${
+                          l.level === "error" ? "✖" : l.level === "warn" ? "▲" : "·"
+                        } ${l.msg}`,
+                    )
+                    .join("\n")}
+            </pre>
+          )}
+        </div>
       </div>
     </main>
   );
