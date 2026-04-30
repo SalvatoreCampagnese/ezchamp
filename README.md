@@ -4,7 +4,8 @@ The user-facing Telegram Mini App that opens inside Telegram via a `web_app` but
 
 ## Stack
 
-- **Next.js 14** (App Router) + TypeScript
+a- **Next.js 14** (App Router) + TypeScript
+
 - **@telegram-apps/telegram-ui** — native-looking Telegram components
 - **@telegram-apps/sdk-react** — `MainButton`, `BackButton`, theme params, haptics
 - **@tonconnect/ui-react** — wallet connect modal + `sendTransaction` for stakes
