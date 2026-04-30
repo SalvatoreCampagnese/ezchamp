@@ -106,7 +106,7 @@ export default function OnboardingPage() {
   const shortAddr = (a: string) => `${a.slice(0, 6)}…${a.slice(-6)}`;
 
   function probeModalDom(label: string) {
-    // SDK-side state (works regardless of how the DOM is laid out).
+    // 1. SDK-side state.
     try {
       const m = (tonConnectUI as unknown as { modal?: { state?: unknown } }).modal;
       log("info", `${label}: sdk modal.state=${JSON.stringify(m?.state ?? null)}`);
@@ -114,41 +114,66 @@ export default function OnboardingPage() {
       log("warn", `${label}: sdk modal.state probe threw: ${String(e)}`);
     }
 
-    // Find every plausible TonConnect root: by id, by class, by tag.
-    const candidates = new Set<HTMLElement>();
-    document
-      .querySelectorAll<HTMLElement>(
-        '[id^="tc-"], [id*="tonconnect"], [class^="tc-"], [class*=" tc-"], tc-root',
-      )
-      .forEach((el) => candidates.add(el));
-    if (candidates.size === 0) {
-      log("warn", `${label}: no tc-* / tonconnect-* element in DOM`);
-    } else {
-      let i = 0;
-      candidates.forEach((el) => {
-        const cs = window.getComputedStyle(el);
-        const r = el.getBoundingClientRect();
+    // 2. Every body child — tag, id, classes, child count, position, size.
+    const kids = Array.from(document.body.children);
+    log("info", `${label}: body has ${kids.length} children`);
+    kids.forEach((n, i) => {
+      const el = n as HTMLElement;
+      const cs = window.getComputedStyle(el);
+      const r = el.getBoundingClientRect();
+      const cls = el.className && typeof el.className === "string" ? el.className.slice(0, 60) : "";
+      log(
+        "info",
+        `  [${i}] <${el.tagName.toLowerCase()}` +
+          `${el.id ? "#" + el.id : ""}` +
+          `${cls ? "." + cls.replace(/\s+/g, ".") : ""}> ` +
+          `c=${el.children.length} pos=${cs.position} ` +
+          `size=${Math.round(r.width)}x${Math.round(r.height)} ` +
+          `top=${Math.round(r.top)} z=${cs.zIndex} disp=${cs.display} op=${cs.opacity}`,
+      );
+    });
+
+    // 3. Hunt anything tc-related, anywhere (including shadow-host candidates).
+    const explicit = document.getElementById("tc-widget-root");
+    log("info", `${label}: getElementById('tc-widget-root') = ${explicit ? "FOUND" : "null"}`);
+    if (explicit) {
+      const cs = window.getComputedStyle(explicit);
+      const r = explicit.getBoundingClientRect();
+      log(
+        "info",
+        `  → tc-widget-root: pos=${cs.position} size=${Math.round(r.width)}x${Math.round(r.height)} ` +
+          `top=${Math.round(r.top)} z=${cs.zIndex} disp=${cs.display} op=${cs.opacity} ` +
+          `children=${explicit.children.length}`,
+      );
+      if (explicit.children.length > 0) {
+        const first = explicit.children[0] as HTMLElement;
+        const fcs = window.getComputedStyle(first);
+        const fr = first.getBoundingClientRect();
         log(
           "info",
-          `${label}: [${i++}] <${el.tagName.toLowerCase()}` +
-            `${el.id ? `#${el.id}` : ""}` +
-            `${el.className ? `.${String(el.className).slice(0, 40)}` : ""}> ` +
-            `display=${cs.display} vis=${cs.visibility} z=${cs.zIndex} ` +
-            `pos=${cs.position} size=${Math.round(r.width)}x${Math.round(r.height)} ` +
-            `top=${Math.round(r.top)} children=${el.children.length}`,
+          `  → first child <${first.tagName.toLowerCase()}${first.id ? "#" + first.id : ""}>: ` +
+            `pos=${fcs.position} size=${Math.round(fr.width)}x${Math.round(fr.height)} ` +
+            `top=${Math.round(fr.top)} z=${fcs.zIndex} disp=${fcs.display} op=${fcs.opacity} ` +
+            `transform=${fcs.transform.slice(0, 40)}`,
         );
-      });
+      }
     }
 
-    // Direct body-child dump — last 6 nodes (portals usually mount to the end).
-    const tail = Array.from(document.body.children).slice(-6);
-    log(
-      "info",
-      `${label}: body tail=[${tail
-        .map((n) => `${n.tagName.toLowerCase()}${n.id ? "#" + n.id : ""}`)
-        .join(", ")}]`,
-    );
+    // 4. Anything with data-tc-* attribute.
+    const dataTc = document.querySelectorAll<HTMLElement>("[data-tc-modal-state], [data-tc-wallets-modal-container], [data-tc-modal]");
+    log("info", `${label}: [data-tc-*] count=${dataTc.length}`);
+    dataTc.forEach((el, i) => {
+      const cs = window.getComputedStyle(el);
+      const r = el.getBoundingClientRect();
+      log(
+        "info",
+        `  data-tc[${i}] <${el.tagName.toLowerCase()}> ` +
+          `size=${Math.round(r.width)}x${Math.round(r.height)} top=${Math.round(r.top)} ` +
+          `disp=${cs.display} op=${cs.opacity} z=${cs.zIndex}`,
+      );
+    });
 
+    // 5. Viewport.
     log(
       "info",
       `${label}: vp=${window.innerWidth}x${window.innerHeight} ` +
