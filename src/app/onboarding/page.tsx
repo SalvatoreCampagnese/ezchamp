@@ -106,36 +106,55 @@ export default function OnboardingPage() {
   const shortAddr = (a: string) => `${a.slice(0, 6)}…${a.slice(-6)}`;
 
   function probeModalDom(label: string) {
-    const root = document.querySelector("tc-root") as HTMLElement | null;
-    if (!root) {
-      log("warn", `${label}: <tc-root> NOT in DOM`);
-      return;
+    // SDK-side state (works regardless of how the DOM is laid out).
+    try {
+      const m = (tonConnectUI as unknown as { modal?: { state?: unknown } }).modal;
+      log("info", `${label}: sdk modal.state=${JSON.stringify(m?.state ?? null)}`);
+    } catch (e) {
+      log("warn", `${label}: sdk modal.state probe threw: ${String(e)}`);
     }
-    const hasShadow = !!root.shadowRoot;
-    const cs = window.getComputedStyle(root);
-    const rect = root.getBoundingClientRect();
-    log(
-      "info",
-      `${label}: tc-root display=${cs.display} vis=${cs.visibility} z=${cs.zIndex} ` +
-        `pos=${cs.position} size=${Math.round(rect.width)}x${Math.round(rect.height)} ` +
-        `shadow=${hasShadow ? "yes" : "NO"}`,
-    );
-    if (hasShadow) {
-      const overlay = root.shadowRoot!.querySelector('[class*="modal"], [class*="Modal"]') as HTMLElement | null;
-      if (overlay) {
-        const ocs = window.getComputedStyle(overlay);
-        const orect = overlay.getBoundingClientRect();
+
+    // Find every plausible TonConnect root: by id, by class, by tag.
+    const candidates = new Set<HTMLElement>();
+    document
+      .querySelectorAll<HTMLElement>(
+        '[id^="tc-"], [id*="tonconnect"], [class^="tc-"], [class*=" tc-"], tc-root',
+      )
+      .forEach((el) => candidates.add(el));
+    if (candidates.size === 0) {
+      log("warn", `${label}: no tc-* / tonconnect-* element in DOM`);
+    } else {
+      let i = 0;
+      candidates.forEach((el) => {
+        const cs = window.getComputedStyle(el);
+        const r = el.getBoundingClientRect();
         log(
           "info",
-          `${label}: modal el display=${ocs.display} vis=${ocs.visibility} ` +
-            `opacity=${ocs.opacity} size=${Math.round(orect.width)}x${Math.round(orect.height)} ` +
-            `top=${Math.round(orect.top)}`,
+          `${label}: [${i++}] <${el.tagName.toLowerCase()}` +
+            `${el.id ? `#${el.id}` : ""}` +
+            `${el.className ? `.${String(el.className).slice(0, 40)}` : ""}> ` +
+            `display=${cs.display} vis=${cs.visibility} z=${cs.zIndex} ` +
+            `pos=${cs.position} size=${Math.round(r.width)}x${Math.round(r.height)} ` +
+            `top=${Math.round(r.top)} children=${el.children.length}`,
         );
-      } else {
-        log("warn", `${label}: no modal element in shadowRoot (children=${root.shadowRoot!.children.length})`);
-      }
+      });
     }
-    log("info", `${label}: viewport=${window.innerWidth}x${window.innerHeight} scroll=${window.scrollY}`);
+
+    // Direct body-child dump — last 6 nodes (portals usually mount to the end).
+    const tail = Array.from(document.body.children).slice(-6);
+    log(
+      "info",
+      `${label}: body tail=[${tail
+        .map((n) => `${n.tagName.toLowerCase()}${n.id ? "#" + n.id : ""}`)
+        .join(", ")}]`,
+    );
+
+    log(
+      "info",
+      `${label}: vp=${window.innerWidth}x${window.innerHeight} ` +
+        `vv=${window.visualViewport?.width ?? "?"}x${window.visualViewport?.height ?? "?"} ` +
+        `scroll=${window.scrollY}`,
+    );
   }
 
   async function handleConnect() {
