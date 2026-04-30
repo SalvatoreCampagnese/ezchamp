@@ -7,7 +7,7 @@ import { AppRoot } from "@telegram-apps/telegram-ui";
 
 const manifestUrl =
   process.env.NEXT_PUBLIC_TONCONNECT_MANIFEST_URL ??
-  "https://example.com/tonconnect-manifest.json";
+  "https://raw.githubusercontent.com/SalvatoreCampagnese/ezchamp-manifest/refs/heads/main/tonconnect-manifest.json";
 
 export function Providers({ children }: { children: ReactNode }) {
   const [client] = useState(
@@ -20,9 +20,12 @@ export function Providers({ children }: { children: ReactNode }) {
   );
 
   return (
-    <TonConnectUIProvider manifestUrl={manifestUrl}>
+    <TonConnectUIProvider
+      manifestUrl={manifestUrl}
+      uiPreferences={{ theme: "DARK" as never }}
+    >
       <QueryClientProvider client={client}>
-        <AppRoot>{children}</AppRoot>
+        <AppRoot appearance="dark">{children}</AppRoot>
       </QueryClientProvider>
     </TonConnectUIProvider>
   );

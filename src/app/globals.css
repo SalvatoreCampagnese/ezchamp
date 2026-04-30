@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Orbitron:wght@600;700;800;900&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -5,9 +7,13 @@
 /* Telegram UI styles must come from @telegram-apps/telegram-ui/dist/styles.css.
    It's imported in layout.tsx so its CSS variables and component styles are available globally. */
 
+:root {
+  color-scheme: dark;
+}
+
 html, body {
-  background: var(--tg-theme-bg-color, #fff);
-  color: var(--tg-theme-text-color, #000);
+  background: #05050a;
+  color: #ffffff;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -15,4 +21,151 @@ body {
   /* Telegram WebView pads with safe-area on iOS — respect it. */
   padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
+  font-family: 'Rajdhani', system-ui, sans-serif;
 }
+
+/* eSports landing — dark canvas with subtle grid + radial glows */
+.esports-canvas {
+  position: relative;
+  min-height: 100dvh;
+  background:
+    radial-gradient(1200px 600px at 80% -10%, rgba(255,45,146,0.18), transparent 60%),
+    radial-gradient(900px 500px at -10% 20%, rgba(0,229,255,0.16), transparent 60%),
+    radial-gradient(700px 400px at 50% 110%, rgba(122,60,255,0.22), transparent 60%),
+    #05050a;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.esports-canvas::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.045) 1px, transparent 1px);
+  background-size: 40px 40px;
+  mask-image: radial-gradient(ellipse at center, #000 30%, transparent 75%);
+  pointer-events: none;
+  z-index: 0;
+  animation: gridShift 8s linear infinite;
+}
+
+@keyframes gridShift {
+  0% { background-position: 0 0; }
+  100% { background-position: 40px 40px; }
+}
+
+.esports-canvas::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0;
+  height: 200%;
+  top: -50%;
+  background: linear-gradient(180deg, transparent 0%, rgba(0,229,255,0.06) 50%, transparent 100%);
+  pointer-events: none;
+  z-index: 0;
+  animation: scan 6s linear infinite;
+}
+
+@keyframes scan {
+  0%   { transform: translateY(-50%); }
+  100% { transform: translateY(50%); }
+}
+
+.headline-glitch {
+  font-family: 'Orbitron', system-ui, sans-serif;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  background: linear-gradient(90deg, #00e5ff 0%, #ff2d92 60%, #7a3cff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 28px rgba(255,45,146,0.25);
+}
+
+.tagline {
+  font-family: 'Rajdhani', system-ui, sans-serif;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+}
+
+/* Custom connect button — neon, animated */
+.btn-neon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 1rem 1.6rem;
+  width: 100%;
+  border-radius: 14px;
+  font-family: 'Orbitron', system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #fff;
+  background:
+    linear-gradient(135deg, rgba(255,45,146,0.95) 0%, rgba(122,60,255,0.95) 60%, rgba(0,229,255,0.95) 100%);
+  border: 1px solid rgba(255,255,255,0.14);
+  box-shadow: 0 0 16px rgba(255,45,146,0.55), 0 0 40px rgba(122,60,255,0.35);
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 200ms ease;
+  animation: pulseGlow 2.4s ease-in-out infinite;
+}
+.btn-neon:hover { transform: translateY(-1px) scale(1.01); }
+.btn-neon:active { transform: translateY(0) scale(0.99); }
+.btn-neon:disabled { opacity: 0.6; cursor: not-allowed; animation: none; }
+
+@keyframes pulseGlow {
+  0%,100% { box-shadow: 0 0 16px rgba(255,45,146,0.55), 0 0 40px rgba(122,60,255,0.35); }
+  50%     { box-shadow: 0 0 28px rgba(255,45,146,0.85), 0 0 80px rgba(122,60,255,0.55); }
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  font-family: 'Rajdhani', system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 0.78rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.04);
+  backdrop-filter: blur(6px);
+}
+.chip .dot {
+  width: 7px; height: 7px; border-radius: 999px;
+  background: #00e5ff;
+  box-shadow: 0 0 10px rgba(0,229,255,0.85);
+}
+
+.card {
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.015) 100%);
+  border: 1px solid rgba(255,255,255,0.08);
+  backdrop-filter: blur(8px);
+}
+.card.is-active {
+  border-color: rgba(0,229,255,0.55);
+  box-shadow: 0 0 24px rgba(0,229,255,0.25);
+}
+
+.game-tile {
+  position: relative;
+  padding: 1rem 1.1rem;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.015) 100%);
+  border: 1px solid rgba(255,255,255,0.08);
+  font-family: 'Rajdhani', system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: border-color 150ms ease, box-shadow 200ms ease, transform 150ms ease;
+}
+.game-tile:hover { border-color: rgba(255,45,146,0.55); box-shadow: 0 0 18px rgba(255,45,146,0.18); transform: translateY(-1px); }
+.game-tile.is-active { border-color: rgba(0,229,255,0.7); box-shadow: 0 0 22px rgba(0,229,255,0.3); }
