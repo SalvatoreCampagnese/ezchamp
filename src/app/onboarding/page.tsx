@@ -346,6 +346,91 @@ export default function OnboardingPage() {
         </footer>
       </div>
 
+      {/* WALLET PICKER OVERLAY */}
+      {pickerOpen && (
+        <div
+          className="fixed inset-0 z-40 flex items-end sm:items-center justify-center"
+          onClick={() => setPickerOpen(false)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" />
+          <div
+            className="relative w-full max-w-md sheet"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* drag handle */}
+            <div className="mx-auto mt-2 mb-3 w-12 h-1.5 rounded-full bg-white/15" />
+
+            <div className="px-5 pb-2 flex items-center justify-between">
+              <div>
+                <h3 className="font-display text-lg tracking-[0.18em] uppercase text-white">
+                  Choose Wallet
+                </h3>
+                <p className="text-xs text-white/50 mt-0.5">
+                  Tap to link · {wallets.length} supported
+                </p>
+              </div>
+              <button
+                onClick={() => setPickerOpen(false)}
+                className="text-white/55 hover:text-white text-xl leading-none px-2"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="px-5 mt-3">
+              <input
+                value={walletQuery}
+                onChange={(e) => setWalletQuery(e.target.value)}
+                placeholder="Search wallets…"
+                className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white placeholder-white/35 focus:outline-none focus:border-neon-cyan/60"
+              />
+            </div>
+
+            <div
+              className="mt-3 px-3 pb-5 grid grid-cols-3 gap-2 overflow-y-auto"
+              style={{ maxHeight: "55vh" }}
+            >
+              {filteredWallets.length === 0 && (
+                <p className="col-span-3 text-center text-sm text-white/45 py-6">
+                  No wallets match.
+                </p>
+              )}
+              {filteredWallets.map((w) => {
+                const featured = FEATURED_ORDER.includes(w.appName);
+                return (
+                  <button
+                    key={w.appName}
+                    onClick={() => pickWallet(w)}
+                    className={`wallet-tile ${featured ? "is-featured" : ""}`}
+                  >
+                    {w.imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={w.imageUrl}
+                        alt=""
+                        className="w-12 h-12 rounded-xl object-cover"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center text-white/60 font-bold">
+                        {w.name[0]}
+                      </div>
+                    )}
+                    <span className="block text-[0.72rem] mt-1.5 text-white/85 truncate w-full text-center">
+                      {w.name}
+                    </span>
+                    {featured && <span className="featured-badge">Top</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* DEBUG PANEL */}
       <div className="fixed bottom-0 inset-x-0 z-50 max-w-md mx-auto px-3 pb-3">
         <div
