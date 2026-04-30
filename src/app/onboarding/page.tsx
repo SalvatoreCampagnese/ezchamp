@@ -48,11 +48,12 @@ export default function OnboardingPage() {
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
   const [wallets, setWallets] = useState<WalletInfo[]>([]);
-  const [showFallback, setShowFallback] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [walletQuery, setWalletQuery] = useState("");
 
   // ───────── debug log ─────────
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [debugOpen, setDebugOpen] = useState(true);
+  const [debugOpen, setDebugOpen] = useState(false);
   const log = useCallback((level: LogEntry["level"], msg: string) => {
     const t = new Date().toISOString().slice(11, 23);
     // eslint-disable-next-line no-console
@@ -148,117 +149,43 @@ export default function OnboardingPage() {
   const walletConnected = !!(tonAddress || me.data?.wallet_address);
   const shortAddr = (a: string) => `${a.slice(0, 6)}…${a.slice(-6)}`;
 
-  function probeModalDom(label: string) {
-    try {
-      const m = (tonConnectUI as unknown as { modal?: { state?: unknown } }).modal;
-      log("info", `${label}: sdk modal.state=${JSON.stringify(m?.state ?? null)}`);
-    } catch (e) {
-      log("warn", `${label}: sdk modal.state probe threw: ${String(e)}`);
-    }
-    log("info", `${label}: body.className='${document.body.className}'`);
-
-    // Walk the ENTIRE document (not just body children) for any tc/tonconnect
-    // element and any shadow-host. Cheap on a small Mini App.
-    const all = document.querySelectorAll<HTMLElement>("*");
-    const matches: HTMLElement[] = [];
-    let shadowCount = 0;
-    all.forEach((el) => {
-      if (el.shadowRoot) shadowCount++;
-      const id = el.id || "";
-      const cls = typeof el.className === "string" ? el.className : "";
-      if (
-        id.startsWith("tc-") ||
-        id.includes("tonconnect") ||
-        cls.startsWith("tc-") ||
-        cls.includes(" tc-") ||
-        cls.includes("tonconnect") ||
-        el.tagName.toLowerCase().startsWith("tc-")
-      ) {
-        matches.push(el);
-      }
-    });
-    log("info", `${label}: total elements=${all.length} shadowHosts=${shadowCount} tc-matches=${matches.length}`);
-    matches.slice(0, 8).forEach((el, i) => {
-      const cs = window.getComputedStyle(el);
-      const r = el.getBoundingClientRect();
-      const cls = typeof el.className === "string" ? el.className.slice(0, 50) : "";
-      log(
-        "info",
-        `  tc[${i}] <${el.tagName.toLowerCase()}` +
-          `${el.id ? "#" + el.id : ""}` +
-          `${cls ? "." + cls.replace(/\s+/g, ".") : ""}> ` +
-          `disp=${cs.display} pos=${cs.position} z=${cs.zIndex} ` +
-          `size=${Math.round(r.width)}x${Math.round(r.height)} top=${Math.round(r.top)} op=${cs.opacity}`,
-      );
-    });
-
-    log(
-      "info",
-      `${label}: vp=${window.innerWidth}x${window.innerHeight} ` +
-        `vv=${window.visualViewport?.width ?? "?"}x${window.visualViewport?.height ?? "?"}`,
-    );
+  function handleConnect() {
+    log("info", "opening custom wallet picker");
+    setConnectError(null);
+    setPickerOpen(true);
   }
 
-  // ───── Fallback connect paths ─────
-  async function tryOpenSingleWallet(appName: string) {
-    log("info", `openSingleWalletModal('${appName}') →`);
+  async function pickWallet(w: WalletInfo) {
+    log("info", `picked ${w.appName}`);
+    setPickerOpen(false);
+    setConnecting(true);
+    setConnectError(null);
     try {
+      // openSingleWalletModal works in iOS Telegram WebView even when openModal
+      // (the multi-wallet picker) silently fails to mount.
       await (
         tonConnectUI as unknown as { openSingleWalletModal: (n: string) => Promise<void> }
-      ).openSingleWalletModal(appName);
+      ).openSingleWalletModal(w.appName);
       log("info", "openSingleWalletModal resolved");
-      setTimeout(() => probeModalDom(`single-modal +500ms`), 500);
-    } catch (e) {
-      log("error", `openSingleWalletModal threw: ${String(e)}`);
-    }
-  }
-
-  async function tryDirectUniversalLink(w: WalletInfo) {
-    log("info", `direct universal link for ${w.appName}`);
-    if (!w.universalLink || !w.bridgeUrl) {
-      log("error", `wallet ${w.appName} has no universalLink/bridgeUrl`);
-      return;
-    }
-    try {
-      const url = (
-        tonConnectUI as unknown as {
-          connector: {
-            connect: (s: { universalLink: string; bridgeUrl: string }) => string;
-          };
-        }
-      ).connector.connect({
-        universalLink: w.universalLink,
-        bridgeUrl: w.bridgeUrl,
-      });
-      log("info", `connect() returned URL (len=${url.length}): ${url.slice(0, 80)}…`);
-      const opener = openInTelegram(url);
-      log("info", `opened via ${opener}`);
-    } catch (e) {
-      log("error", `connector.connect threw: ${String(e)}`);
-    }
-  }
-
-  async function handleConnect() {
-    log("info", "connect button clicked");
-    if (!tonConnectUI) {
-      log("error", "tonConnectUI is null — provider not mounted");
-      setConnectError("TON Connect not initialized.");
-      return;
-    }
-    setConnectError(null);
-    setConnecting(true);
-    try {
-      probeModalDom("pre-open");
-      log("info", "calling tonConnectUI.openModal()…");
-      await tonConnectUI.openModal();
-      log("info", "openModal() resolved");
-      // The modal mounts asynchronously — re-probe after a tick.
-      setTimeout(() => probeModalDom("post-open +0ms"), 0);
-      setTimeout(() => probeModalDom("post-open +500ms"), 500);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      log("error", `openModal() threw: ${msg}`);
-      setConnectError(msg || "Couldn't open wallet.");
+      log("error", `openSingleWalletModal failed: ${msg} — trying direct link`);
+      // Last-resort: build the universal link manually and open it via Telegram.
+      if (w.universalLink && w.bridgeUrl) {
+        try {
+          const url = (
+            tonConnectUI as unknown as {
+              connector: { connect: (s: { universalLink: string; bridgeUrl: string }) => string };
+            }
+          ).connector.connect({ universalLink: w.universalLink, bridgeUrl: w.bridgeUrl });
+          openInTelegram(url);
+          log("info", "opened via direct universal link");
+        } catch (e2) {
+          setConnectError(`${w.name} couldn't open: ${String(e2)}`);
+        }
+      } else {
+        setConnectError(`${w.name} couldn't open: ${msg}`);
+      }
     } finally {
       setConnecting(false);
     }
@@ -280,6 +207,32 @@ export default function OnboardingPage() {
       () => log("warn", "clipboard write failed"),
     );
   }
+
+  // Featured wallets first (in this exact order), then everyone else
+  // alphabetically. Matches what mainstream Telegram Mini Apps display.
+  const FEATURED_ORDER = [
+    "telegram-wallet",
+    "tonkeeper",
+    "mytonwallet",
+    "tonhub",
+    "hot",
+    "bitgetTonWallet",
+  ];
+  const filteredWallets = wallets
+    .filter((w) =>
+      walletQuery.trim() === ""
+        ? true
+        : w.name.toLowerCase().includes(walletQuery.toLowerCase()) ||
+          w.appName.toLowerCase().includes(walletQuery.toLowerCase()),
+    )
+    .sort((a, b) => {
+      const ai = FEATURED_ORDER.indexOf(a.appName);
+      const bi = FEATURED_ORDER.indexOf(b.appName);
+      if (ai !== -1 && bi !== -1) return ai - bi;
+      if (ai !== -1) return -1;
+      if (bi !== -1) return 1;
+      return a.name.localeCompare(b.name);
+    });
 
   return (
     <main className="esports-canvas">
@@ -349,42 +302,9 @@ export default function OnboardingPage() {
                 <p className="mt-3 text-sm text-red-400">{connectError}</p>
               )}
 
-              <button
-                onClick={() => setShowFallback((s) => !s)}
-                className="mt-4 w-full text-[0.7rem] tracking-[0.18em] uppercase text-white/55 hover:text-white"
-              >
-                {showFallback ? "Hide" : "Modal not opening?"} · pick wallet directly
-              </button>
-
-              {showFallback && (
-                <div className="mt-3 grid gap-2">
-                  {wallets.length === 0 && (
-                    <p className="text-xs text-white/45">Loading wallets…</p>
-                  )}
-                  {wallets.map((w) => (
-                    <div
-                      key={w.appName}
-                      className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2"
-                    >
-                      <span className="text-sm text-white/85 truncate">{w.name}</span>
-                      <div className="flex gap-1.5">
-                        <button
-                          onClick={() => tryOpenSingleWallet(w.appName)}
-                          className="text-[0.65rem] tracking-[0.16em] uppercase px-2 py-1 rounded border border-neon-cyan/40 text-neon-cyan"
-                        >
-                          Modal
-                        </button>
-                        <button
-                          onClick={() => tryDirectUniversalLink(w)}
-                          className="text-[0.65rem] tracking-[0.16em] uppercase px-2 py-1 rounded border border-neon-magenta/50 text-neon-magenta"
-                        >
-                          Direct
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <p className="mt-3 text-center text-[0.65rem] tracking-[0.18em] uppercase text-white/35">
+                Tonkeeper · MyTonWallet · Tonhub · Wallet · +30 more
+              </p>
             </>
           )}
         </section>
