@@ -117,10 +117,10 @@ export default function MatchPage() {
         <Banner header="Match complete" subheader={`Winner: ${m.winner_team_id === m.poster_team_id ? m.poster_team?.name : m.accepter_team?.name}`} />
       )}
       {m.status === "disputed" && (
-        <Banner type="warning" header="Disputed" subheader="Staff is reviewing — you'll be notified by the bot." />
+        <Banner header="⚠ Disputed" subheader="Staff is reviewing — you'll be notified by the bot." />
       )}
 
-      {err && <Banner type="warning" header="Error" subheader={err} />}
+      {err && <Banner header="⚠ Error" subheader={err} />}
 
       {/* Confirm result modal */}
       {confirmingResult && (

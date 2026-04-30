@@ -36,7 +36,7 @@ export default function TeamPage() {
           {team.data.members.map((m) => (
             <Cell
               key={m.user_id}
-              before={<Avatar size={32} acronym={(m.user.telegram_username ?? "?")[0]?.toUpperCase()} />}
+              before={<Avatar size={28} acronym={(m.user.telegram_username ?? "?")[0]?.toUpperCase()} />}
               subtitle={m.role === "owner" ? "Owner" : "Member"}
             >
               {m.user.telegram_username ? `@${m.user.telegram_username}` : `id:${m.user.telegram_id}`}
@@ -120,7 +120,7 @@ export default function TeamPage() {
           </Section>
         </>
       )}
-      {err && <Banner type="warning" header="Error" subheader={err} />}
+      {err && <Banner header="⚠ Error" subheader={err} />}
       <Section>
         <Cell><Button mode="plain" onClick={() => setMode("choose")}>Cancel</Button></Cell>
       </Section>

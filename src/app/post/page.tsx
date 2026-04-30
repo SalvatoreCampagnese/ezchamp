@@ -141,7 +141,7 @@ export default function PostMatchPage() {
         </Cell>
       </Section>
 
-      {err && <Banner type="warning" header="Error" subheader={err} />}
+      {err && <Banner header="⚠ Error" subheader={err} />}
 
       <Section>
         <Cell>
