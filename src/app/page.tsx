@@ -33,6 +33,13 @@ function Home() {
   const queueEntry = useMyQueueEntry();
   const myMatches = useMyMatches();
 
+  // Navigate to the per-game lobby browser AND set the active game so
+  // sidebar / "My Team" stay in context.
+  const openGame = (id: string) => {
+    updateMe.mutate({ current_game_id: id });
+    router.push(`/game/${id}`);
+  };
+
   useEffect(() => {
     if (me.data && !me.data.wallet_address) router.replace("/onboarding");
   }, [me.data?.wallet_address, me.data, router]);
@@ -75,7 +82,7 @@ function Home() {
               return (
                 <button
                   key={g.id}
-                  onClick={() => updateMe.mutate({ current_game_id: g.id })}
+                  onClick={() => openGame(g.id)}
                   className={`gx-tile ${active ? "is-active" : ""}`}
                   aria-label={`Play ${g.name}`}
                 >
@@ -115,10 +122,10 @@ function Home() {
       {/* QUICK ACTIONS */}
       {activeGameId && !queueEntry.data && (
         <section className="grid grid-cols-2 gap-3">
-          <button onClick={() => router.push("/queue")} className="card p-4 text-left">
+          <button onClick={() => router.push(`/game/${activeGameId}`)} className="card p-4 text-left">
             <div className="text-2xl">⚡</div>
             <div className="font-display tracking-[0.16em] uppercase text-sm text-white mt-1">Find Match</div>
-            <div className="text-[0.7rem] text-white/55 mt-0.5">Pick a lobby, queue up</div>
+            <div className="text-[0.7rem] text-white/55 mt-0.5">Browse lobbies</div>
           </button>
           <button onClick={() => router.push("/team")} className="card p-4 text-left">
             <div className="text-2xl">🛡️</div>
@@ -184,7 +191,7 @@ function QueueBanner({ entry }: { entry: NonNullable<ReturnType<typeof useMyQueu
 
   return (
     <button
-      onClick={() => router.push(entry.match_id ? `/match/${entry.match_id}` : "/queue")}
+      onClick={() => router.push(entry.match_id ? `/match/${entry.match_id}` : `/game/${entry.game_id}`)}
       className="card p-4 text-left flex items-center gap-3 relative overflow-hidden"
       style={{ borderColor: color + "55" }}
     >
