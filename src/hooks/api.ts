@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
 
 export interface Game { id: string; slug: string; name: string }
@@ -151,7 +151,16 @@ export const useMyQueueEntry = () =>
     queryKey: ["queue", "me"],
     queryFn: () => api<{ entry: QueueEntry | null }>("/api/queue/me"),
     select: (d) => d.entry,
-    refetchInterval: 4_000,
+    placeholderData: keepPreviousData,
+    // Only poll while there's an active entry that might transition state.
+    // At rest (no entry) we stop polling entirely so the lobby browser
+    // doesn't refetch every few seconds for nothing.
+    refetchInterval: (q) => {
+      const e = (q.state.data as { entry: QueueEntry | null } | undefined)?.entry;
+      if (!e) return false;
+      if (e.status === "queued" || e.status === "pending_payment") return 4_000;
+      return false;
+    },
   });
 
 export const useJoinQueue = () => {

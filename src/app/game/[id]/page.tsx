@@ -66,17 +66,20 @@ function GameDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameId]);
 
-  if (games.isLoading || rules.isLoading || team.isLoading || queueEntry.isLoading) {
-    return <p className="text-white/55 text-sm">Loading…</p>;
-  }
-  if (!game) return <p className="text-white/65">Game not found.</p>;
-
-  // ───── If the user is in queue for THIS game, show the waiting state. ─────
+  // If we already know the user is queued for THIS game, show the waiting
+  // state immediately — don't gate on rules/team loading.
   if (queueEntry.data && queueEntry.data.game_id === gameId) {
     return <QueueWaiting />;
   }
 
-  // ───── Otherwise show the lobby browser. ─────
+  // For the lobby browser we only block on the bare minimum — games + rules.
+  // Team status & queue polling resolve in the background and never gate the
+  // page (so background refetches don't flash "Loading…").
+  if (!games.data || !rules.data) {
+    return <p className="text-white/55 text-sm">Loading…</p>;
+  }
+  if (!game) return <p className="text-white/65">Game not found.</p>;
+
   const teamSize = team.data?.members.length ?? 0;
   const teamId = team.data?.team?.id ?? null;
 
