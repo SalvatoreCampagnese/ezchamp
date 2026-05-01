@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ConnectGate } from "@/components/ConnectGate";
 import { AppShell } from "@/components/AppShell";
@@ -313,8 +313,6 @@ function LobbyCard({
 }) {
   const { id: gameId } = useParams<{ id: string }>();
   const join = useJoinQueue();
-  const confirm = useConfirmQueuePayment();
-  const sendFee = useSendEntryFee();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -324,20 +322,22 @@ function LobbyCard({
   const noEscrow = !ESCROW;
   const disabled = busy || tooSmall || noTeam || noEscrow;
 
+  // Only create the queue entry here. The wallet prompt is triggered by
+  // QueueWaiting once the page transitions to the waiting state — that way
+  // the payment flow survives this card unmounting and the user can re-open
+  // the wallet from there if the deeplink dropped.
   const handleJoin = async () => {
     setErr(null);
     setBusy(true);
     try {
-      const { entry: q } = await join.mutateAsync({
+      await join.mutateAsync({
         game_id: gameId,
         rules_id: rulesId,
         players_per_side: pps,
         best_of: DEFAULT_BO,
         entry_fee_ton: entry,
       });
-      const result = await sendFee(q.id, entry);
-      const txHash = result?.boc?.slice(0, 64) ?? `dev:${q.id}`;
-      await confirm.mutateAsync({ entry_id: q.id, tx_hash: txHash });
+      // queueEntry refetches → parent re-renders to QueueWaiting.
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -413,7 +413,13 @@ function QueueWaiting() {
   const router = useRouter();
   const myEntry = useMyQueueEntry();
   const cancel = useCancelQueueEntry();
+  const sendFee = useSendEntryFee();
+  const confirm = useConfirmQueuePayment();
+  const [paying, setPaying] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // Track which entry IDs we've already auto-fired the wallet for in this
+  // session, so we don't re-prompt on every render.
+  const autoFiredRef = useRef<Set<string>>(new Set());
 
   // Once matched → straight to the match page.
   useEffect(() => {
@@ -422,11 +428,39 @@ function QueueWaiting() {
     }
   }, [myEntry.data?.status, myEntry.data?.match_id, router]);
 
-  if (!myEntry.data) return null;
   const e = myEntry.data;
+
+  const triggerPayment = useCallback(async () => {
+    if (!e || e.status !== "pending_payment") return;
+    setErr(null);
+    setPaying(true);
+    try {
+      const result = await sendFee(e.id, Number(e.entry_fee_ton));
+      const txHash = result?.boc?.slice(0, 64) ?? `dev:${e.id}`;
+      await confirm.mutateAsync({ entry_id: e.id, tx_hash: txHash });
+    } catch (ex) {
+      setErr((ex as Error).message || "Payment failed.");
+    } finally {
+      setPaying(false);
+    }
+  }, [e, sendFee, confirm]);
+
+  // Auto-fire the wallet once when we land in this state with a fresh
+  // pending_payment entry. Re-firing requires the user to tap the manual
+  // "Open wallet" button (so we don't spam them after a rejection).
+  useEffect(() => {
+    if (!e) return;
+    if (e.status !== "pending_payment") return;
+    if (autoFiredRef.current.has(e.id)) return;
+    autoFiredRef.current.add(e.id);
+    triggerPayment();
+  }, [e, triggerPayment]);
+
+  if (!e) return null;
   const v = gameVisual(e.game?.slug);
   const canCancel = e.status === "pending_payment" || e.status === "queued";
   const prize = calcPrize(Number(e.entry_fee_ton));
+  const isPending = e.status === "pending_payment";
 
   return (
     <div className="flex flex-col gap-5">
@@ -452,16 +486,38 @@ function QueueWaiting() {
       </section>
 
       <section className="card p-6 text-center flex flex-col items-center">
-        <SpinnerBlock label={e.status === "pending_payment" ? "Waiting payment" : "Searching"} />
+        <SpinnerBlock label={isPending ? "Awaiting payment" : "Searching"} />
         <h3 className="headline-glitch text-xl">
-          {e.status === "pending_payment" ? "Waiting for payment" : "Searching opponent…"}
+          {isPending ? "Waiting for payment" : "Searching opponent…"}
         </h3>
         <p className="text-white/65 text-sm mt-2">
-          {e.status === "pending_payment"
-            ? "Open your wallet and confirm the entry fee."
+          {isPending
+            ? "Confirm the entry fee in your wallet. If it didn't open automatically, tap the button below."
             : "Random pairing. The owner gets a Telegram message when you're matched."}
         </p>
       </section>
+
+      {isPending && (
+        <button
+          onClick={triggerPayment}
+          disabled={paying}
+          className="btn-neon"
+        >
+          {paying ? "Opening wallet…" : `⚡ Open wallet & pay ${Number(e.entry_fee_ton)} TON`}
+        </button>
+      )}
+
+      {err && (
+        <div className="card p-3" style={{ borderColor: "rgba(255,80,120,0.4)" }}>
+          <div className="text-[0.7rem] tracking-[0.18em] uppercase font-display text-red-400">
+            Payment error
+          </div>
+          <p className="text-[0.75rem] text-white/65 mt-1">{err}</p>
+          <p className="text-[0.7rem] text-white/45 mt-2">
+            Tap “Open wallet” again to retry, or cancel below to refund.
+          </p>
+        </div>
+      )}
 
       {canCancel && (
         <button
@@ -475,10 +531,9 @@ function QueueWaiting() {
           }}
           className="btn-outline is-danger"
         >
-          Cancel search & refund
+          Cancel search {e.status === "queued" ? "& refund" : ""}
         </button>
       )}
-      {err && <p className="text-red-400 text-sm">⚠ {err}</p>}
     </div>
   );
 }
