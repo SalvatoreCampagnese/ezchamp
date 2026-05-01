@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTonAddress, useTonConnectUI } from "@tonconnect/ui-react";
 import { useGames, useMe, useUpdateMe } from "@/hooks/api";
+import { SpinnerBlock } from "@/components/Spinner";
 
 type WalletInfo = {
   appName: string;
@@ -319,7 +320,7 @@ export default function OnboardingPage() {
           </div>
 
           {games.isLoading ? (
-            <p className="text-white/55 text-sm">Loading games…</p>
+            <SpinnerBlock label="Loading games" />
           ) : (
             <div className="grid grid-cols-2 gap-3">
               {games.data?.map((g) => {

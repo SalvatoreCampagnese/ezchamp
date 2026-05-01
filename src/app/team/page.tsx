@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ConnectGate } from "@/components/ConnectGate";
 import { AppShell } from "@/components/AppShell";
+import { SpinnerBlock } from "@/components/Spinner";
 import { CopyButton } from "@/components/CopyButton";
 import { useCreateTeam, useGames, useJoinTeam, useMe, useTeam } from "@/hooks/api";
 import { gameVisual } from "@/lib/games-meta";
@@ -44,7 +45,7 @@ function Team() {
       />
     );
   }
-  if (team.isLoading) return <p className="text-white/55 text-sm">Loading team…</p>;
+  if (team.isLoading) return <SpinnerBlock label="Loading team" />;
 
   const game = games.data?.find((g) => g.id === gameId);
   const v = gameVisual(game?.slug);

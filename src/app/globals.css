@@ -523,6 +523,81 @@ body {
 .gx-fav.is-fav { color: #ffd84a; border-color: rgba(255,216,74,0.7); box-shadow: 0 0 12px rgba(255,216,74,0.35); }
 .gx-fav:hover { color: #ffd84a; }
 
+/* ───────── eSports spinner ───────── */
+
+.spinner-wrap {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+}
+.spinner {
+  position: relative;
+  display: inline-block;
+}
+.spinner-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background:
+    conic-gradient(from 0deg,
+      #00e5ff 0deg,
+      #ff2d92 130deg,
+      #7a3cff 230deg,
+      transparent 280deg,
+      transparent 360deg);
+  /* Punch out the center → leaves a thick ring */
+  -webkit-mask: radial-gradient(circle, transparent 55%, #000 56%);
+          mask: radial-gradient(circle, transparent 55%, #000 56%);
+  filter: drop-shadow(0 0 6px rgba(0,229,255,0.4))
+          drop-shadow(0 0 10px rgba(255,45,146,0.3));
+  animation: spinner-rot 1s linear infinite;
+}
+.spinner-ring.is-inner {
+  inset: 18%;
+  background:
+    conic-gradient(from 180deg,
+      #b6ff3c 0deg,
+      transparent 120deg,
+      #00e5ff 200deg,
+      transparent 360deg);
+  -webkit-mask: radial-gradient(circle, transparent 50%, #000 51%);
+          mask: radial-gradient(circle, transparent 50%, #000 51%);
+  filter: drop-shadow(0 0 4px rgba(182,255,60,0.4));
+  animation: spinner-rot-rev 1.4s linear infinite;
+}
+.spinner-core {
+  position: absolute;
+  inset: 38%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(0,229,255,0.5) 60%, transparent 100%);
+  box-shadow: 0 0 14px rgba(0,229,255,0.7);
+  animation: spinner-pulse 1.6s ease-in-out infinite;
+}
+.spinner-label {
+  font-family: 'Orbitron', system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 0.7rem;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.65);
+  animation: spinner-flicker 1.6s ease-in-out infinite;
+}
+@keyframes spinner-rot {
+  to { transform: rotate(360deg); }
+}
+@keyframes spinner-rot-rev {
+  to { transform: rotate(-360deg); }
+}
+@keyframes spinner-pulse {
+  0%, 100% { transform: scale(0.85); opacity: 0.7; }
+  50%      { transform: scale(1.1);  opacity: 1; }
+}
+@keyframes spinner-flicker {
+  0%, 100% { opacity: 0.75; }
+  50%      { opacity: 1; }
+}
+
 /* Status / state pills */
 .pill {
   display: inline-flex;

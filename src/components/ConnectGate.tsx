@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useTonAddress } from "@tonconnect/ui-react";
-import { Spinner, Placeholder } from "@telegram-apps/telegram-ui";
+import { Spinner } from "@/components/Spinner";
 import { useMe, useUpdateMe } from "@/hooks/api";
 
 /**
@@ -14,7 +14,7 @@ import { useMe, useUpdateMe } from "@/hooks/api";
  * If the wallet is connected on-device but not yet stored, this component
  * persists it. Game selection is deferred to the onboarding screen.
  */
-export function ConnectGate({ children, requireGame = true }: { children: React.ReactNode; requireGame?: boolean }) {
+export function ConnectGate({ children }: { children: React.ReactNode; requireGame?: boolean }) {
   const me = useMe();
   const tonAddress = useTonAddress();
   const updateMe = useUpdateMe();
@@ -24,25 +24,28 @@ export function ConnectGate({ children, requireGame = true }: { children: React.
     if (me.data && tonAddress && tonAddress !== me.data.wallet_address) {
       updateMe.mutate({ wallet_address: tonAddress });
     }
-  }, [tonAddress, me.data?.wallet_address]);
+  }, [tonAddress, me.data?.wallet_address, me.data, updateMe]);
 
   if (me.isLoading) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <Spinner size="l" />
+      <div className="esports-canvas flex min-h-screen items-center justify-center">
+        <Spinner size="lg" label="Authenticating" />
       </div>
     );
   }
   if (me.isError) {
     return (
-      <Placeholder
-        header="Couldn't authenticate"
-        description="Open this app from inside Telegram (long-press the bot's menu button)."
-      />
+      <div className="esports-canvas min-h-screen flex items-center justify-center px-6">
+        <div className="card p-6 text-center max-w-sm">
+          <div className="text-3xl mb-2">⚠</div>
+          <h2 className="headline-glitch text-2xl">Couldn&apos;t authenticate</h2>
+          <p className="text-white/65 text-sm mt-2">
+            Open this app from inside Telegram (long-press the bot&apos;s menu button).
+          </p>
+        </div>
+      </div>
     );
   }
 
-  // The screens themselves decide what to do when the user lacks wallet/game.
-  // We just pass through with the freshly-loaded user.
   return <>{children}</>;
 }

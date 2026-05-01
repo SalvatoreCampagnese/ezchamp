@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { ConnectGate } from "@/components/ConnectGate";
 import { AppShell } from "@/components/AppShell";
+import { SpinnerBlock } from "@/components/Spinner";
 import { useMyMatches } from "@/hooks/api";
 
 /**
@@ -28,7 +29,7 @@ function Tickets() {
     ["disputed", "awaiting_result"].includes(m.status),
   );
 
-  if (matches.isLoading) return <p className="text-white/55 text-sm">Loading…</p>;
+  if (matches.isLoading) return <SpinnerBlock label="Loading tickets" />;
   if (tickets.length === 0) {
     return (
       <section className="card p-6 text-center">

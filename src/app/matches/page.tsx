@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { ConnectGate } from "@/components/ConnectGate";
 import { AppShell } from "@/components/AppShell";
+import { SpinnerBlock } from "@/components/Spinner";
 import { useMyMatches } from "@/hooks/api";
 
 export default function MyMatchesPage() {
@@ -31,7 +32,7 @@ function List() {
   const router = useRouter();
   const matches = useMyMatches();
 
-  if (matches.isLoading) return <p className="text-white/55 text-sm">Loading…</p>;
+  if (matches.isLoading) return <SpinnerBlock label="Loading matches" />;
   if (!matches.data || matches.data.length === 0) {
     return (
       <section className="card p-6 text-center">

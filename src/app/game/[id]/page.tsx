@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ConnectGate } from "@/components/ConnectGate";
 import { AppShell } from "@/components/AppShell";
+import { SpinnerBlock } from "@/components/Spinner";
 import {
   useCancelQueueEntry,
   useConfirmQueuePayment,
@@ -76,7 +77,7 @@ function GameDetail() {
   // Team status & queue polling resolve in the background and never gate the
   // page (so background refetches don't flash "Loading…").
   if (!games.data || !rules.data) {
-    return <p className="text-white/55 text-sm">Loading…</p>;
+    return <SpinnerBlock label="Entering lobby" />;
   }
   if (!game) return <p className="text-white/65">Game not found.</p>;
 
@@ -450,15 +451,9 @@ function QueueWaiting() {
         </div>
       </section>
 
-      <section className="card p-6 text-center">
-        <span
-          className="inline-block w-3 h-3 rounded-full animate-pulse"
-          style={{
-            background: e.status === "pending_payment" ? "#ffd84a" : "#00e5ff",
-            boxShadow: `0 0 16px ${e.status === "pending_payment" ? "#ffd84a" : "#00e5ff"}`,
-          }}
-        />
-        <h3 className="headline-glitch text-xl mt-2">
+      <section className="card p-6 text-center flex flex-col items-center">
+        <SpinnerBlock label={e.status === "pending_payment" ? "Waiting payment" : "Searching"} />
+        <h3 className="headline-glitch text-xl">
           {e.status === "pending_payment" ? "Waiting for payment" : "Searching opponent…"}
         </h3>
         <p className="text-white/65 text-sm mt-2">

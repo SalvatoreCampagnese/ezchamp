@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ConnectGate } from "@/components/ConnectGate";
 import { AppShell } from "@/components/AppShell";
+import { SpinnerBlock } from "@/components/Spinner";
 import {
   useGames,
   useMe,
@@ -72,7 +73,7 @@ function Home() {
           </span>
         </div>
         {games.isLoading ? (
-          <p className="text-white/55 text-sm">Loading games…</p>
+          <SpinnerBlock label="Loading games" />
         ) : (
           <div className="grid grid-cols-2 gap-3">
             {sortedGames.map((g) => {

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ConnectGate } from "@/components/ConnectGate";
 import { AppShell } from "@/components/AppShell";
+import { SpinnerBlock } from "@/components/Spinner";
 import {
   useMatch, useMe, useOpenDispute, useReportResult, useTeam,
 } from "@/hooks/api";
@@ -49,7 +50,7 @@ function Match() {
   const [accepting, setAccepting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  if (match.isLoading) return <p className="text-white/55 text-sm">Loading…</p>;
+  if (match.isLoading) return <SpinnerBlock label="Loading match" />;
   if (!match.data) return <p className="text-white/65">Match not found.</p>;
 
   const m = match.data;
