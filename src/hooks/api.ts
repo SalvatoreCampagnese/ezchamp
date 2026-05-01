@@ -128,6 +128,74 @@ export const useReportResult = (matchId: string) => {
   });
 };
 
+export interface QueueEntry {
+  id: string;
+  team_id: string;
+  user_id: string;
+  game_id: string;
+  rules_id: string;
+  players_per_side: number;
+  best_of: number;
+  entry_fee_ton: string;
+  paid_tx_hash: string | null;
+  status: "pending_payment" | "queued" | "matched" | "cancelled" | "expired" | "refunded";
+  matched_at: string | null;
+  match_id: string | null;
+  created_at: string;
+  rule?: { id: string; name: string };
+  game?: { id: string; slug: string; name: string };
+}
+
+export const useMyQueueEntry = () =>
+  useQuery({
+    queryKey: ["queue", "me"],
+    queryFn: () => api<{ entry: QueueEntry | null }>("/api/queue/me"),
+    select: (d) => d.entry,
+    refetchInterval: 4_000,
+  });
+
+export const useJoinQueue = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      game_id: string;
+      rules_id: string;
+      players_per_side: number;
+      best_of: number;
+      entry_fee_ton: number;
+    }) =>
+      api<{ entry: QueueEntry }>("/api/queue/join", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["queue"] }),
+  });
+};
+
+export const useConfirmQueuePayment = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { entry_id: string; tx_hash: string }) =>
+      api<{ match_id: string | null }>(`/api/queue/${input.entry_id}/confirm`, {
+        method: "POST",
+        body: JSON.stringify({ tx_hash: input.tx_hash }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["queue"] });
+      qc.invalidateQueries({ queryKey: ["matches"] });
+    },
+  });
+};
+
+export const useCancelQueueEntry = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (entryId: string) =>
+      api(`/api/queue/${entryId}/cancel`, { method: "POST" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["queue"] }),
+  });
+};
+
 export const useOpenDispute = (matchId: string) => {
   const qc = useQueryClient();
   return useMutation({

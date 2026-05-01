@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useTonAddress, useTonConnectUI } from "@tonconnect/ui-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useMe, useUpdateMe } from "@/hooks/api";
 
 type NavItem = { href: string; label: string; icon: ReactNode };
@@ -37,8 +38,39 @@ export function AppShell({
   const me = useMe();
   const updateMe = useUpdateMe();
   const [tonConnectUI] = useTonConnectUI();
+  const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+
+  // Refetch the session whenever:
+  //   1. TonConnect's wallet status changes (connect / disconnect / restore)
+  //   2. The Mini App becomes visible again (user returned from the wallet app)
+  // Without these, useMe stays cached for staleTime (15s) and the header keeps
+  // showing the old wallet state until the user closes/reopens the app.
+  useEffect(() => {
+    if (!tonConnectUI) return;
+    const unsub = tonConnectUI.onStatusChange((w) => {
+      qc.invalidateQueries({ queryKey: ["me"] });
+      // If the wallet just connected and the server doesn't know yet, persist
+      // it now so the header pill swaps in immediately without waiting for
+      // ConnectGate's effect on the next render.
+      const addr = w?.account?.address;
+      if (addr && me.data && me.data.wallet_address !== addr) {
+        updateMe.mutate({ wallet_address: addr });
+      }
+    });
+    return unsub;
+  }, [tonConnectUI, qc, me.data, updateMe]);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === "visible") {
+        qc.invalidateQueries({ queryKey: ["me"] });
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [qc]);
 
   async function handleDisconnect() {
     if (disconnecting) return;

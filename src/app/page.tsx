@@ -4,7 +4,13 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ConnectGate } from "@/components/ConnectGate";
 import { AppShell } from "@/components/AppShell";
-import { useGames, useMe, useOpenMatches, useUpdateMe } from "@/hooks/api";
+import {
+  useGames,
+  useMe,
+  useMyMatches,
+  useMyQueueEntry,
+  useUpdateMe,
+} from "@/hooks/api";
 import { useFavoriteGames } from "@/hooks/useFavoriteGames";
 import { gameVisual } from "@/lib/games-meta";
 
@@ -24,6 +30,8 @@ function Home() {
   const updateMe = useUpdateMe();
   const router = useRouter();
   const { isFav, toggle } = useFavoriteGames();
+  const queueEntry = useMyQueueEntry();
+  const myMatches = useMyMatches();
 
   useEffect(() => {
     if (me.data && !me.data.wallet_address) router.replace("/onboarding");
@@ -39,8 +47,15 @@ function Home() {
     return a.name.localeCompare(b.name);
   });
 
+  const liveMatches = (myMatches.data ?? []).filter((m) =>
+    ["accepted", "awaiting_result"].includes(m.status),
+  );
+
   return (
     <div className="flex flex-col gap-6">
+      {/* QUEUE BANNER */}
+      {queueEntry.data && <QueueBanner entry={queueEntry.data} />}
+
       {/* HERO STRIP */}
       <section>
         <div className="flex items-center justify-between mb-3">
@@ -98,12 +113,12 @@ function Home() {
       </section>
 
       {/* QUICK ACTIONS */}
-      {activeGameId && (
+      {activeGameId && !queueEntry.data && (
         <section className="grid grid-cols-2 gap-3">
-          <button onClick={() => router.push("/post")} className="card p-4 text-left">
+          <button onClick={() => router.push("/queue")} className="card p-4 text-left">
             <div className="text-2xl">⚡</div>
-            <div className="font-display tracking-[0.16em] uppercase text-sm text-white mt-1">Post Match</div>
-            <div className="text-[0.7rem] text-white/55 mt-0.5">Stake TON, post a duel</div>
+            <div className="font-display tracking-[0.16em] uppercase text-sm text-white mt-1">Find Match</div>
+            <div className="text-[0.7rem] text-white/55 mt-0.5">Pick a lobby, queue up</div>
           </button>
           <button onClick={() => router.push("/team")} className="card p-4 text-left">
             <div className="text-2xl">🛡️</div>
@@ -113,66 +128,80 @@ function Home() {
         </section>
       )}
 
-      {/* OPEN MATCHES — only when a game is picked */}
-      {activeGameId && <OpenMatchesSection gameId={activeGameId} />}
+      {/* LIVE MATCHES */}
+      {liveMatches.length > 0 && (
+        <section>
+          <div className="flex items-center justify-between mb-2">
+            <span className="label-display">Live matches</span>
+            <span className="text-[0.7rem] tracking-[0.18em] uppercase text-white/40">
+              {liveMatches.length}
+            </span>
+          </div>
+          <div className="flex flex-col gap-2">
+            {liveMatches.map((m) => (
+              <button
+                key={m.id}
+                onClick={() => router.push(`/match/${m.id}`)}
+                className="card p-4 text-left flex items-center justify-between gap-3"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="font-display tracking-[0.06em] uppercase text-white truncate">
+                    {m.poster_team?.name ?? "?"} <span className="text-white/40">vs</span>{" "}
+                    {m.accepter_team?.name ?? "?"}
+                  </div>
+                  <div className="text-[0.7rem] text-white/55 mt-0.5">
+                    {m.players_per_side}v{m.players_per_side} · BO{m.best_of} · {m.rule?.name ?? "—"}
+                  </div>
+                </div>
+                <span className="pill is-live">Live</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       {!activeGameId && (
         <section className="card p-5 text-center">
-          <p className="text-white/65">
-            Tap any game above to enter its lobby.
-          </p>
+          <p className="text-white/65">Tap any game above to enter its lobby.</p>
         </section>
       )}
     </div>
   );
 }
 
-function OpenMatchesSection({ gameId }: { gameId: string }) {
-  const matches = useOpenMatches(gameId);
+function QueueBanner({ entry }: { entry: NonNullable<ReturnType<typeof useMyQueueEntry>["data"]> }) {
   const router = useRouter();
+  const v = gameVisual(entry.game?.slug);
+  const status = entry.status;
+  const label =
+    status === "pending_payment"
+      ? "Awaiting payment"
+      : status === "queued"
+      ? "Searching opponent"
+      : "Matched!";
+  const color =
+    status === "pending_payment" ? "#ffd84a" : status === "queued" ? "#00e5ff" : "#b6ff3c";
 
   return (
-    <section>
-      <div className="flex items-center justify-between mb-2">
-        <span className="label-display">Open matches</span>
-        {matches.data && matches.data.length > 0 && (
-          <span className="text-[0.7rem] tracking-[0.18em] uppercase text-white/40">
-            {matches.data.length} live
-          </span>
-        )}
+    <button
+      onClick={() => router.push(entry.match_id ? `/match/${entry.match_id}` : "/queue")}
+      className="card p-4 text-left flex items-center gap-3 relative overflow-hidden"
+      style={{ borderColor: color + "55" }}
+    >
+      <div aria-hidden className="absolute inset-0 opacity-20" style={{ background: v.gradient }} />
+      <span
+        className="relative inline-block w-3 h-3 rounded-full animate-pulse shrink-0"
+        style={{ background: color, boxShadow: `0 0 16px ${color}` }}
+      />
+      <div className="relative flex-1 min-w-0">
+        <div className="font-display tracking-[0.16em] uppercase text-white text-sm">{label}</div>
+        <div className="text-[0.7rem] text-white/55 mt-0.5 truncate">
+          {entry.game?.name ?? ""} · {entry.players_per_side}v{entry.players_per_side} · BO{entry.best_of} · {entry.rule?.name ?? ""}
+        </div>
       </div>
-
-      {matches.isLoading ? (
-        <p className="text-white/55 text-sm">Loading…</p>
-      ) : !matches.data || matches.data.length === 0 ? (
-        <div className="card p-5 text-center">
-          <p className="text-white/70 text-sm">Nothing here yet.</p>
-          <p className="text-white/45 text-xs mt-1">Be the first to post a match.</p>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {matches.data.map((m) => (
-            <button
-              key={m.id}
-              onClick={() => router.push(`/match/${m.id}`)}
-              className="card p-4 text-left flex items-center justify-between gap-3"
-            >
-              <div className="min-w-0">
-                <div className="font-display tracking-[0.06em] uppercase text-white truncate">
-                  {m.poster_team?.name ?? "Unknown team"}
-                </div>
-                <div className="text-[0.7rem] text-white/55 mt-0.5">
-                  {m.players_per_side}v{m.players_per_side} · BO{m.best_of} · {m.rule?.name ?? "—"}
-                </div>
-              </div>
-              <div className="text-right flex flex-col items-end gap-1 shrink-0">
-                <span className="font-display text-neon-cyan text-base">{m.stake_ton} TON</span>
-                <span className="pill is-open">Open</span>
-              </div>
-            </button>
-          ))}
-        </div>
-      )}
-    </section>
+      <span className="relative font-display text-neon-cyan text-sm shrink-0">
+        {Number(entry.entry_fee_ton)} TON
+      </span>
+    </button>
   );
 }
