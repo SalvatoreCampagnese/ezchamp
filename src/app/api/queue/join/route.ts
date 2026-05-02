@@ -28,6 +28,11 @@ export const POST = withAuth(async (req: NextRequest, user) => {
     return NextResponse.json({ error: "bad_entry_fee" }, { status: 400 });
   }
 
+  // Lazy sweep before insert. If the caller's team had a stale 'queued'
+  // entry from a previous search, this clears it so enqueue_team doesn't
+  // reject with team_already_in_queue.
+  await db.rpc("expire_stale_queue_entries", { p_max_age_minutes: 10 });
+
   // Resolve the caller's team for this game.
   const { data: tm, error: tmErr } = await db
     .from("team_members")

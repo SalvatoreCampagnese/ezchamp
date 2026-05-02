@@ -13,6 +13,13 @@ import { db } from "@/lib/supabase";
  * pointing at a dispute.
  */
 export const GET = withAuth(async (_req, user) => {
+  // Best-effort lazy sweep: the hourly Vercel cron is the authoritative
+  // worker, but firing the RPC on each /api/queue/me read means the user's
+  // own banner clears (and their refund is queued) within seconds of the
+  // 10-minute window passing instead of up to an hour later. Errors here
+  // are swallowed — the cron will retry.
+  await db.rpc("expire_stale_queue_entries", { p_max_age_minutes: 10 });
+
   const { data, error } = await db
     .from("queue_entries")
     .select("*, rule:rules(id,name), game:games(id,slug,name), match:matches(id,status)")
