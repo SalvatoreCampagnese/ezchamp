@@ -18,6 +18,12 @@ import {
 import { useFavoriteLobbies, lobbyKey } from "@/hooks/useFavoriteLobbies";
 import { useSendEntryFee, ESCROW, NETWORK } from "@/lib/ton";
 import { gameVisual } from "@/lib/games-meta";
+import { clearPendingBoc, readPendingBoc, writePendingBoc } from "@/lib/pending-payment";
+import {
+  friendlyPaymentError,
+  useHardDisconnect,
+  useWalletNetworkCheck,
+} from "@/lib/wallet-network";
 
 const ENTRY_COSTS = [2, 5, 10, 25, 50] as const;
 const FORMATS = [1, 2, 3, 4, 5] as const;
@@ -415,11 +421,17 @@ function QueueWaiting() {
   const cancel = useCancelQueueEntry();
   const sendFee = useSendEntryFee();
   const confirm = useConfirmQueuePayment();
+  const network = useWalletNetworkCheck();
+  const disconnect = useHardDisconnect();
   const [paying, setPaying] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   // Track which entry IDs we've already auto-fired the wallet for in this
   // session, so we don't re-prompt on every render.
   const autoFiredRef = useRef<Set<string>>(new Set());
+  // True if the entry has a stash — i.e. wallet already paid earlier but
+  // the server confirm call hasn't succeeded. Drives the "Resume payment"
+  // UI instead of "Open wallet".
+  const [hasPendingBoc, setHasPendingBoc] = useState(false);
 
   // Once matched → straight to the match page.
   useEffect(() => {
@@ -430,31 +442,68 @@ function QueueWaiting() {
 
   const e = myEntry.data;
 
+  // Refresh the pending-boc indicator whenever the entry changes.
+  useEffect(() => {
+    if (!e) return;
+    setHasPendingBoc(!!readPendingBoc(e.id));
+  }, [e?.id]);
+
   const triggerPayment = useCallback(async () => {
     if (!e || e.status !== "pending_payment") return;
     setErr(null);
     setPaying(true);
     try {
+      // If we already paid the wallet on a previous attempt and only the
+      // server confirm dropped, replay the confirm with the stashed BOC.
+      // This avoids re-asking the wallet (which would charge twice).
+      const stashed = readPendingBoc(e.id);
+      if (stashed) {
+        await confirm.mutateAsync({ entry_id: e.id, tx_hash: stashed });
+        clearPendingBoc(e.id);
+        setHasPendingBoc(false);
+        return;
+      }
+
       const result = await sendFee(e.id, Number(e.entry_fee_ton));
       const txHash = result?.boc?.slice(0, 64) ?? `dev:${e.id}`;
+
+      // Persist the BOC BEFORE the confirm call. If confirm throws, the
+      // next retry path picks it up and only retries the server call.
+      writePendingBoc(e.id, txHash);
+      setHasPendingBoc(true);
+
       await confirm.mutateAsync({ entry_id: e.id, tx_hash: txHash });
+      clearPendingBoc(e.id);
+      setHasPendingBoc(false);
     } catch (ex) {
-      setErr((ex as Error).message || "Payment failed.");
+      const raw = (ex as Error).message || "Payment failed.";
+      setErr(friendlyPaymentError(raw));
     } finally {
       setPaying(false);
     }
   }, [e, sendFee, confirm]);
 
   // Auto-fire the wallet once when we land in this state with a fresh
-  // pending_payment entry. Re-firing requires the user to tap the manual
-  // "Open wallet" button (so we don't spam them after a rejection).
+  // pending_payment entry — UNLESS we already have a stashed BOC, in which
+  // case we just want to retry the server confirm without prompting again.
+  // Also skip if the wallet is on the wrong network (sendTransaction would
+  // immediately throw — let the user fix the wallet first).
   useEffect(() => {
     if (!e) return;
     if (e.status !== "pending_payment") return;
     if (autoFiredRef.current.has(e.id)) return;
+    if (!network.ok && !readPendingBoc(e.id)) return;
     autoFiredRef.current.add(e.id);
     triggerPayment();
-  }, [e, triggerPayment]);
+  }, [e, triggerPayment, network.ok]);
+
+  // Clear the stash if the entry leaves pending_payment by any other means
+  // (bot sweep, admin, cancel).
+  useEffect(() => {
+    if (e && e.status !== "pending_payment") {
+      clearPendingBoc(e.id);
+    }
+  }, [e?.status, e?.id]);
 
   if (!e) return null;
   const v = gameVisual(e.game?.slug);
@@ -485,14 +534,45 @@ function QueueWaiting() {
         </div>
       </section>
 
+      {/* Network mismatch banner: blocks the wallet flow until fixed. */}
+      {isPending && !network.ok && !hasPendingBoc && (
+        <div className="card p-4" style={{ borderColor: "rgba(255,80,120,0.5)" }}>
+          <div className="font-display text-[0.75rem] tracking-[0.18em] uppercase text-red-400">
+            Wrong network
+          </div>
+          <p className="text-[0.8rem] text-white/75 mt-1">
+            Your wallet is on <span className="text-white font-mono">{network.current}</span>. EZChamp runs on{" "}
+            <span className="text-neon-cyan font-mono">testnet</span>.
+          </p>
+          <p className="text-[0.7rem] text-white/55 mt-1">
+            Two ways to fix: switch your wallet to testnet (Tonkeeper → Settings → Active networks) and reconnect, OR disconnect now and reconnect a testnet account.
+          </p>
+          <button
+            onClick={async () => {
+              await disconnect();
+              router.replace("/onboarding");
+            }}
+            className="btn-outline is-danger mt-3"
+          >
+            Disconnect &amp; reconnect
+          </button>
+        </div>
+      )}
+
       <section className="card p-6 text-center flex flex-col items-center">
-        <SpinnerBlock label={isPending ? "Awaiting payment" : "Searching"} />
+        <SpinnerBlock label={isPending ? (hasPendingBoc ? "Confirming" : "Awaiting payment") : "Searching"} />
         <h3 className="headline-glitch text-xl">
-          {isPending ? "Waiting for payment" : "Searching opponent…"}
+          {isPending
+            ? hasPendingBoc
+              ? "Resuming confirmation"
+              : "Waiting for payment"
+            : "Searching opponent…"}
         </h3>
         <p className="text-white/65 text-sm mt-2">
           {isPending
-            ? "Confirm the entry fee in your wallet. If it didn't open automatically, tap the button below."
+            ? hasPendingBoc
+              ? "Your wallet already paid earlier — we're just retrying the server confirmation. Your wallet won't open again."
+              : "Confirm the entry fee in your wallet. If it didn't open automatically, tap the button below."
             : "Random pairing. The owner gets a Telegram message when you're matched."}
         </p>
       </section>
@@ -500,10 +580,18 @@ function QueueWaiting() {
       {isPending && (
         <button
           onClick={triggerPayment}
-          disabled={paying}
+          disabled={paying || (!network.ok && !hasPendingBoc)}
           className="btn-neon"
         >
-          {paying ? "Opening wallet…" : `⚡ Open wallet & pay ${Number(e.entry_fee_ton)} TON`}
+          {paying
+            ? hasPendingBoc
+              ? "Confirming on server…"
+              : "Opening wallet…"
+            : hasPendingBoc
+              ? `↻ Retry confirmation (no new charge)`
+              : !network.ok
+                ? "Fix wallet network first"
+                : `⚡ Open wallet & pay ${Number(e.entry_fee_ton)} TON`}
         </button>
       )}
 
