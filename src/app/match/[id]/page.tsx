@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ConnectGate } from "@/components/ConnectGate";
 import { AppShell } from "@/components/AppShell";
@@ -51,6 +51,14 @@ function Match() {
   const [disputeText, setDisputeText] = useState("");
   const [accepting, setAccepting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [disputeTab, setDisputeTab] = useState<"chat" | "details">("chat");
+
+  // When the match transitions in/out of 'disputed' default the tab to 'chat'
+  // so the user lands on the conversation, not on data they've already seen.
+  const isDisputed = match.data?.status === "disputed";
+  useEffect(() => {
+    if (isDisputed) setDisputeTab("chat");
+  }, [isDisputed]);
 
   if (match.isLoading) return <SpinnerBlock label="Loading match" />;
   if (!match.data) return <p className="text-white/65">Match not found.</p>;
@@ -73,39 +81,79 @@ function Match() {
     }
   };
 
+  const headerCard = (
+    <section className="card p-5">
+      <div className="flex items-center justify-between mb-3">
+        <span className="label-display">Match {m.id.slice(0, 8)}</span>
+        {statusPill(m.status)}
+      </div>
+      <div className="flex items-center gap-3 justify-between">
+        <TeamBadge name={m.poster_team?.name ?? "?"} side="left" />
+        <span className="font-display text-2xl text-white/40">VS</span>
+        <TeamBadge name={m.accepter_team?.name ?? "Open slot"} side="right" />
+      </div>
+      <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+        <Stat label="Format" value={`${m.players_per_side}v${m.players_per_side}`} />
+        <Stat label="Series" value={`BO${m.best_of}`} />
+        <Stat label="Stake" value={`${m.stake_ton} TON`} accent />
+      </div>
+      {m.rule?.name && (
+        <div className="mt-3 text-center text-[0.75rem] text-white/55">
+          <span className="text-white/35 uppercase tracking-[0.18em] text-[0.65rem]">Rules · </span>
+          {m.rule.name}
+        </div>
+      )}
+      {m.result_deadline_at && (
+        <div className="mt-3 text-center text-[0.7rem] text-white/45">
+          Other team must confirm by{" "}
+          <span className="text-white/85">
+            {new Date(m.result_deadline_at).toLocaleString()}
+          </span>
+        </div>
+      )}
+    </section>
+  );
+
   return (
     <div className="flex flex-col gap-5">
-      {/* Header card with both teams */}
-      <section className="card p-5">
-        <div className="flex items-center justify-between mb-3">
-          <span className="label-display">Match {m.id.slice(0, 8)}</span>
-          {statusPill(m.status)}
-        </div>
-        <div className="flex items-center gap-3 justify-between">
-          <TeamBadge name={m.poster_team?.name ?? "?"} side="left" />
-          <span className="font-display text-2xl text-white/40">VS</span>
-          <TeamBadge name={m.accepter_team?.name ?? "Open slot"} side="right" />
-        </div>
-        <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-          <Stat label="Format" value={`${m.players_per_side}v${m.players_per_side}`} />
-          <Stat label="Series" value={`BO${m.best_of}`} />
-          <Stat label="Stake" value={`${m.stake_ton} TON`} accent />
-        </div>
-        {m.rule?.name && (
-          <div className="mt-3 text-center text-[0.75rem] text-white/55">
-            <span className="text-white/35 uppercase tracking-[0.18em] text-[0.65rem]">Rules · </span>
-            {m.rule.name}
+      {/* When the match is disputed AND the viewer is on a team in it, replace
+          the always-visible header with Chat/Details tabs — the chat is the
+          primary action; full match info moves behind the Details tab. */}
+      {m.status === "disputed" && inMatch ? (
+        <>
+          <section className="card p-3 text-center" style={{ borderColor: "rgba(255,80,120,0.4)" }}>
+            <div className="font-display text-white text-sm">⚠ Disputed — staff is reviewing</div>
+            <div className="text-[0.7rem] text-white/55 mt-1">
+              Only you and staff can see this thread.
+            </div>
+          </section>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setDisputeTab("chat")}
+              className={`flex-1 py-2 text-sm font-display tracking-[0.12em] uppercase rounded-lg border ${
+                disputeTab === "chat"
+                  ? "border-neon-cyan/60 bg-neon-cyan/10 text-white"
+                  : "border-white/10 bg-white/[0.02] text-white/60"
+              }`}
+            >
+              Chat
+            </button>
+            <button
+              onClick={() => setDisputeTab("details")}
+              className={`flex-1 py-2 text-sm font-display tracking-[0.12em] uppercase rounded-lg border ${
+                disputeTab === "details"
+                  ? "border-neon-cyan/60 bg-neon-cyan/10 text-white"
+                  : "border-white/10 bg-white/[0.02] text-white/60"
+              }`}
+            >
+              Details
+            </button>
           </div>
-        )}
-        {m.result_deadline_at && (
-          <div className="mt-3 text-center text-[0.7rem] text-white/45">
-            Other team must confirm by{" "}
-            <span className="text-white/85">
-              {new Date(m.result_deadline_at).toLocaleString()}
-            </span>
-          </div>
-        )}
-      </section>
+          {disputeTab === "chat" ? <DisputePanel matchId={m.id} /> : headerCard}
+        </>
+      ) : (
+        headerCard
+      )}
 
       {/* Accept */}
       {m.status === "open" && !inMatch && (
@@ -162,18 +210,15 @@ function Match() {
           <div className="text-[0.7rem] uppercase tracking-[0.18em] text-white/45 mt-1">Match complete</div>
         </section>
       )}
-      {m.status === "disputed" && (
-        <>
-          <section className="card p-5 text-center" style={{ borderColor: "rgba(255,80,120,0.4)" }}>
-            <div className="text-3xl mb-1">⚠</div>
-            <div className="font-display text-white">Disputed</div>
-            <div className="text-[0.7rem] text-white/55 mt-1">
-              Staff is reviewing. Use the chat below to share details — only
-              you and staff can see this thread.
-            </div>
-          </section>
-          {inMatch && <DisputePanel matchId={m.id} />}
-        </>
+      {/* Disputed view (banner + tabs + chat/details) is rendered above
+          in place of the standard header. A non-team viewer still gets the
+          mini banner here so the page isn't silent. */}
+      {m.status === "disputed" && !inMatch && (
+        <section className="card p-5 text-center" style={{ borderColor: "rgba(255,80,120,0.4)" }}>
+          <div className="text-3xl mb-1">⚠</div>
+          <div className="font-display text-white">Disputed</div>
+          <div className="text-[0.7rem] text-white/55 mt-1">Staff is reviewing.</div>
+        </section>
       )}
 
       {err && <p className="text-red-400 text-sm">⚠ {err}</p>}

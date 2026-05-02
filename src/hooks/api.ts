@@ -97,6 +97,18 @@ export const useMyMatches = () =>
     refetchInterval: 10_000,
   });
 
+// Number of matches that need the user's attention (disputed or awaiting
+// the other team's confirmation). Used to render the unread dot on the menu
+// icon and the Tickets nav item.
+export const useTicketsCount = () =>
+  useQuery({
+    queryKey: ["matches", "mine"],
+    queryFn: () => api<{ matches: MatchSummary[] }>("/api/my-matches"),
+    select: (d) =>
+      d.matches.filter((m) => m.status === "disputed" || m.status === "awaiting_result").length,
+    refetchInterval: 10_000,
+  });
+
 export const useMatch = (id: string) =>
   useQuery({
     queryKey: ["match", id],

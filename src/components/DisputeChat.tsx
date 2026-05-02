@@ -106,30 +106,28 @@ export function DisputeChat({
 
       {err && <p className="text-red-400 text-xs">⚠ {err}</p>}
 
-      <div className="flex gap-2">
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              submit();
-            }
-          }}
-          placeholder="Type a message…"
-          rows={2}
-          maxLength={2000}
-          disabled={disabled || sending}
-          className="input-neon flex-1 resize-none"
-        />
-        <button
-          onClick={submit}
-          disabled={disabled || sending || draft.trim().length === 0}
-          className="btn-neon px-4"
-        >
-          {sending ? "…" : "Send"}
-        </button>
-      </div>
+      <textarea
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            submit();
+          }
+        }}
+        placeholder="Type a message…"
+        rows={2}
+        maxLength={2000}
+        disabled={disabled || sending}
+        className="input-neon w-full resize-none"
+      />
+      <button
+        onClick={submit}
+        disabled={disabled || sending || draft.trim().length === 0}
+        className="btn-neon w-full"
+      >
+        {sending ? "Sending…" : "Send"}
+      </button>
     </div>
   );
 }

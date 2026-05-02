@@ -4,7 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useTonAddress, useTonConnectUI } from "@tonconnect/ui-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useMe, useUpdateMe } from "@/hooks/api";
+import { useMe, useTicketsCount, useUpdateMe } from "@/hooks/api";
 
 type NavItem = { href: string; label: string; icon: ReactNode };
 
@@ -37,6 +37,8 @@ export function AppShell({
   const tonAddress = useTonAddress();
   const me = useMe();
   const updateMe = useUpdateMe();
+  const ticketsCount = useTicketsCount();
+  const hasTickets = (ticketsCount.data ?? 0) > 0;
   const [tonConnectUI] = useTonConnectUI();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -115,10 +117,17 @@ export function AppShell({
             ) : (
               <button
                 onClick={() => setOpen(true)}
-                className="header-btn"
+                className="header-btn relative"
                 aria-label="Open menu"
               >
                 <IconMenu />
+                {hasTickets && (
+                  <span
+                    className="absolute top-1 right-1 w-2 h-2 rounded-full"
+                    style={{ background: "#ff5078", boxShadow: "0 0 6px #ff5078" }}
+                    aria-label="Unread tickets"
+                  />
+                )}
               </button>
             )}
             <button
@@ -190,6 +199,7 @@ export function AppShell({
             <nav className="px-3 py-3 flex flex-col gap-1">
               {NAV.map((item) => {
                 const active = pathname === item.href || (item.href !== "/" && pathname?.startsWith(item.href));
+                const showDot = item.href === "/tickets" && hasTickets;
                 return (
                   <button
                     key={item.href}
@@ -198,6 +208,13 @@ export function AppShell({
                   >
                     <span className="sidebar-link-icon">{item.icon}</span>
                     <span className="flex-1 text-left">{item.label}</span>
+                    {showDot && (
+                      <span
+                        className="w-2 h-2 rounded-full"
+                        style={{ background: "#ff5078", boxShadow: "0 0 6px #ff5078" }}
+                        aria-label={`${ticketsCount.data} unread tickets`}
+                      />
+                    )}
                   </button>
                 );
               })}
