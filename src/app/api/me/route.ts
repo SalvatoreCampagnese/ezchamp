@@ -1,9 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { withAuth } from "@/lib/api-auth";
+import { isAdmin, withAuth } from "@/lib/api-auth";
 import { db } from "@/lib/supabase";
 
 export const GET = withAuth(async (_req, user) => {
-  return NextResponse.json({ user });
+  return NextResponse.json({ user: { ...user, is_admin: isAdmin(user.telegram_id) } });
 });
 
 export const PATCH = withAuth(async (req: NextRequest, user) => {

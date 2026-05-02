@@ -6,10 +6,12 @@ import { ConnectGate } from "@/components/ConnectGate";
 import { AppShell } from "@/components/AppShell";
 import { SpinnerBlock } from "@/components/Spinner";
 import {
-  useMatch, useMe, useOpenDispute, useReportResult, useTeam,
+  useMatch, useMatchDisputeChat, useMe, useOpenDispute, useReportResult,
+  useSendMatchDisputeMessage, useTeam,
 } from "@/hooks/api";
 import { useSendStake, ESCROW } from "@/lib/ton";
 import { api } from "@/lib/api-client";
+import { DisputeChat } from "@/components/DisputeChat";
 
 export default function MatchPage() {
   return (
@@ -161,13 +163,17 @@ function Match() {
         </section>
       )}
       {m.status === "disputed" && (
-        <section className="card p-5 text-center" style={{ borderColor: "rgba(255,80,120,0.4)" }}>
-          <div className="text-3xl mb-1">⚠</div>
-          <div className="font-display text-white">Disputed</div>
-          <div className="text-[0.7rem] text-white/55 mt-1">
-            Staff is reviewing — you&apos;ll be notified by the bot.
-          </div>
-        </section>
+        <>
+          <section className="card p-5 text-center" style={{ borderColor: "rgba(255,80,120,0.4)" }}>
+            <div className="text-3xl mb-1">⚠</div>
+            <div className="font-display text-white">Disputed</div>
+            <div className="text-[0.7rem] text-white/55 mt-1">
+              Staff is reviewing. Use the chat below to share details — only
+              you and staff can see this thread.
+            </div>
+          </section>
+          {inMatch && <DisputePanel matchId={m.id} />}
+        </>
       )}
 
       {err && <p className="text-red-400 text-sm">⚠ {err}</p>}
@@ -227,6 +233,23 @@ function Match() {
         </Overlay>
       )}
     </div>
+  );
+}
+
+function DisputePanel({ matchId }: { matchId: string }) {
+  const chat = useMatchDisputeChat(matchId, true);
+  const send = useSendMatchDisputeMessage(matchId);
+  return (
+    <section className="flex flex-col gap-2">
+      <div className="label-display text-white/55">Chat with staff</div>
+      <DisputeChat
+        messages={chat.data?.messages ?? []}
+        isLoading={chat.isLoading}
+        viewerRole="self"
+        emptyHint="No messages yet — say hi to start the conversation."
+        onSend={(body) => send.mutateAsync(body)}
+      />
+    </section>
   );
 }
 

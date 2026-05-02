@@ -201,6 +201,15 @@ export function AppShell({
                   </button>
                 );
               })}
+              {me.data?.is_admin && (
+                <button
+                  onClick={() => router.push("/admin/disputes")}
+                  className={`sidebar-link ${pathname?.startsWith("/admin") ? "is-active" : ""}`}
+                >
+                  <span className="sidebar-link-icon"><IconShield /></span>
+                  <span className="flex-1 text-left">Staff · Disputes</span>
+                </button>
+              )}
             </nav>
 
             <div className="mt-auto px-3 py-3 border-t border-white/[0.06] flex flex-col gap-1">

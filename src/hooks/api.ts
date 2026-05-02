@@ -7,7 +7,7 @@ export interface Game { id: string; slug: string; name: string }
 export interface Rule { id: string; game_id: string; name: string; description: string | null }
 export interface Team { id: string; name: string; game_id: string; owner_user_id: string; invite_code: string }
 export interface TeamMember { team_id: string; user_id: string; role: string; user: { id: string; telegram_id: number; telegram_username: string | null } }
-export interface User { id: string; telegram_id: number; telegram_username: string | null; wallet_address: string | null; current_game_id: string | null }
+export interface User { id: string; telegram_id: number; telegram_username: string | null; wallet_address: string | null; current_game_id: string | null; is_admin?: boolean }
 export interface MatchSummary {
   id: string; game_id: string; status: string;
   players_per_side: number; best_of: number; stake_ton: string;
@@ -213,5 +213,135 @@ export const useOpenDispute = (matchId: string) => {
         method: "POST", body: JSON.stringify({ description }),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["match", matchId] }),
+  });
+};
+
+// ─── Dispute chat (player side, scoped to their team's thread) ────────────
+
+export interface DisputeMessage {
+  id: string;
+  sender_is_staff: boolean;
+  body: string;
+  created_at: string;
+}
+
+export const useMatchDisputeChat = (matchId: string, enabled: boolean) =>
+  useQuery({
+    queryKey: ["match-dispute-chat", matchId],
+    enabled,
+    queryFn: () =>
+      api<{ messages: DisputeMessage[]; dispute_id: string; team_side: "poster" | "accepter" }>(
+        `/api/matches/${matchId}/messages`,
+      ),
+    refetchInterval: 3_000,
+  });
+
+export const useSendMatchDisputeMessage = (matchId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: string) =>
+      api<{ message: DisputeMessage }>(`/api/matches/${matchId}/messages`, {
+        method: "POST",
+        body: JSON.stringify({ body }),
+      }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["match-dispute-chat", matchId] }),
+  });
+};
+
+// ─── Admin (staff) ─────────────────────────────────────────────────────────
+
+export interface AdminDisputeListItem {
+  id: string;
+  match_id: string;
+  reason: string;
+  description: string | null;
+  status: string;
+  created_at: string;
+  match: {
+    id: string;
+    status: string;
+    players_per_side: number;
+    best_of: number;
+    stake_ton: string;
+    poster_team: { id: string; name: string } | null;
+    accepter_team: { id: string; name: string } | null;
+  } | null;
+}
+
+export interface AdminDisputeDetail {
+  id: string;
+  match_id: string;
+  reason: string;
+  description: string | null;
+  status: string;
+  created_at: string;
+  resolution_notes: string | null;
+  resolved_at: string | null;
+  opener_team: { id: string; name: string } | null;
+  match: {
+    id: string;
+    status: string;
+    players_per_side: number;
+    best_of: number;
+    stake_ton: string;
+    poster_team_id: string;
+    accepter_team_id: string | null;
+    poster_team: { id: string; name: string } | null;
+    accepter_team: { id: string; name: string } | null;
+  } | null;
+}
+
+export interface DisputeEvidence {
+  id: string;
+  url: string;
+  description: string | null;
+  created_at: string;
+}
+
+export const useAdminDisputes = () =>
+  useQuery({
+    queryKey: ["admin", "disputes"],
+    queryFn: () => api<{ disputes: AdminDisputeListItem[] }>("/api/admin/disputes"),
+    select: (d) => d.disputes,
+    refetchInterval: 10_000,
+  });
+
+export const useAdminDispute = (id: string) =>
+  useQuery({
+    queryKey: ["admin", "dispute", id],
+    queryFn: () =>
+      api<{ dispute: AdminDisputeDetail; evidence: DisputeEvidence[] }>(
+        `/api/admin/disputes/${id}`,
+      ),
+    refetchInterval: 5_000,
+  });
+
+export const useAdminDisputeChat = (
+  disputeId: string,
+  side: "poster" | "accepter",
+) =>
+  useQuery({
+    queryKey: ["admin", "dispute", disputeId, "chat", side],
+    queryFn: () =>
+      api<{ messages: DisputeMessage[] }>(
+        `/api/admin/disputes/${disputeId}/messages?side=${side}`,
+      ),
+    select: (d) => d.messages,
+    refetchInterval: 3_000,
+  });
+
+export const useSendAdminDisputeMessage = (disputeId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { side: "poster" | "accepter"; body: string }) =>
+      api<{ message: DisputeMessage }>(`/api/admin/disputes/${disputeId}/messages`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    onSuccess: (_d, vars) =>
+      qc.invalidateQueries({
+        queryKey: ["admin", "dispute", disputeId, "chat", vars.side],
+      }),
   });
 };

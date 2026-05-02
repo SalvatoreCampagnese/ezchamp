@@ -70,3 +70,18 @@ export function withAuth<T>(
     }
   };
 }
+
+/**
+ * Same as withAuth, but rejects callers whose telegram_id isn't in
+ * ADMIN_TELEGRAM_IDS. Staff identity is env-allowlisted (mirrors the bot).
+ */
+export function withAdmin<T>(
+  handler: (req: NextRequest, user: AppUser, ctx: T) => Promise<NextResponse>,
+) {
+  return withAuth<T>(async (req, user, ctx) => {
+    if (!isAdmin(user.telegram_id)) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+    return handler(req, user, ctx);
+  });
+}
