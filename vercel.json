@@ -4,5 +4,5 @@
   "installCommand": "npm install",
   "buildCommand": "npm run build",
   "devCommand": "npm run dev",
-  "crons": [{ "path": "/api/cron/expire-queue", "schedule": "*/30 * * * *" }]
+  "crons": [{ "path": "/api/cron/expire-queue", "schedule": "0 * * * *" }]
 }
