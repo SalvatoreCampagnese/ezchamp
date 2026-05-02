@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useTonAddress, useTonConnectUI } from "@tonconnect/ui-react";
 import { ConnectGate } from "@/components/ConnectGate";
 import { AppShell } from "@/components/AppShell";
 import { SpinnerBlock } from "@/components/Spinner";
@@ -423,6 +424,12 @@ function QueueWaiting() {
   const confirm = useConfirmQueuePayment();
   const network = useWalletNetworkCheck();
   const disconnect = useHardDisconnect();
+  const tonAddress = useTonAddress();
+  const [tonConnectUI] = useTonConnectUI();
+  // No live bridge → sendTransaction would throw "Connect wallet to send a
+  // transaction". Common after reopening the Mini App: the server still has
+  // the user's wallet_address persisted but the TonConnect session expired.
+  const walletConnected = !!tonAddress;
   const [paying, setPaying] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   // Track which entry IDs we've already auto-fired the wallet for in this
@@ -486,16 +493,17 @@ function QueueWaiting() {
   // Auto-fire the wallet once when we land in this state with a fresh
   // pending_payment entry — UNLESS we already have a stashed BOC, in which
   // case we just want to retry the server confirm without prompting again.
-  // Also skip if the wallet is on the wrong network (sendTransaction would
-  // immediately throw — let the user fix the wallet first).
+  // Also skip if the wallet is on the wrong network or no bridge is live
+  // (sendTransaction would immediately throw — let the user fix that first).
   useEffect(() => {
     if (!e) return;
     if (e.status !== "pending_payment") return;
     if (autoFiredRef.current.has(e.id)) return;
     if (!network.ok && !readPendingBoc(e.id)) return;
+    if (!walletConnected && !readPendingBoc(e.id)) return;
     autoFiredRef.current.add(e.id);
     triggerPayment();
-  }, [e, triggerPayment, network.ok]);
+  }, [e, triggerPayment, network.ok, walletConnected]);
 
   // Clear the stash if the entry leaves pending_payment by any other means
   // (bot sweep, admin, cancel).
@@ -534,8 +542,27 @@ function QueueWaiting() {
         </div>
       </section>
 
+      {/* Wallet not connected banner: blocks the wallet flow until fixed. */}
+      {isPending && !walletConnected && !hasPendingBoc && (
+        <div className="card p-4" style={{ borderColor: "rgba(255,80,120,0.5)" }}>
+          <div className="font-display text-[0.75rem] tracking-[0.18em] uppercase text-red-400">
+            Wallet disconnected
+          </div>
+          <p className="text-[0.8rem] text-white/75 mt-1">
+            Your wallet bridge is no longer connected. Reconnect it to confirm
+            the entry fee.
+          </p>
+          <button
+            onClick={() => tonConnectUI.openModal()}
+            className="btn-neon mt-3"
+          >
+            Reconnect wallet
+          </button>
+        </div>
+      )}
+
       {/* Network mismatch banner: blocks the wallet flow until fixed. */}
-      {isPending && !network.ok && !hasPendingBoc && (
+      {isPending && walletConnected && !network.ok && !hasPendingBoc && (
         <div className="card p-4" style={{ borderColor: "rgba(255,80,120,0.5)" }}>
           <div className="font-display text-[0.75rem] tracking-[0.18em] uppercase text-red-400">
             Wrong network
@@ -577,7 +604,7 @@ function QueueWaiting() {
         </p>
       </section>
 
-      {isPending && (
+      {isPending && (walletConnected || hasPendingBoc) && (
         <button
           onClick={triggerPayment}
           disabled={paying || (!network.ok && !hasPendingBoc)}

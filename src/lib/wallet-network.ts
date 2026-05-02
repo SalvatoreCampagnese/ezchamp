@@ -26,7 +26,14 @@ export function friendlyPaymentError(raw: string): string {
     return "Your wallet is on mainnet — EZChamp runs on testnet. Disconnect, then reconnect a wallet that's set to testnet.";
   }
   if (/user (rejected|declined)/i.test(raw)) {
-    return "You declined the transaction in your wallet. Tap to retry when ready.";
+    // TonConnect returns UserRejectsError both when the user actually closes
+    // the sheet and when the wallet aborts the request itself (e.g. an
+    // emulation-failure on Tonkeeper's "Failed" button). Don't accuse the
+    // user — describe both cases.
+    return "Wallet didn't send the transaction. If Tonkeeper showed a 'Failed' button, the destination couldn't be emulated — try again, or check that the escrow address is correct.";
+  }
+  if (/connect wallet|wallet[_ ]not[_ ]connected/i.test(raw)) {
+    return "Your wallet isn't connected to the app right now. Tap Reconnect wallet, finish in your wallet app, then retry payment.";
   }
   if (/timeout|expired/i.test(raw)) {
     return "The wallet didn't respond in time. Reopen it and confirm the transaction.";

@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTonAddress, useTonConnectUI } from "@tonconnect/ui-react";
-import { useGames, useMe, useUpdateMe } from "@/hooks/api";
-import { SpinnerBlock } from "@/components/Spinner";
+import { useQueryClient } from "@tanstack/react-query";
+import { useMe, useUpdateMe } from "@/hooks/api";
 
 type WalletInfo = {
   appName: string;
@@ -41,10 +41,10 @@ type LogEntry = { t: string; level: "info" | "warn" | "error"; msg: string };
 
 export default function OnboardingPage() {
   const me = useMe();
-  const games = useGames();
   const updateMe = useUpdateMe();
   const tonAddress = useTonAddress();
   const [tonConnectUI] = useTonConnectUI();
+  const qc = useQueryClient();
   const router = useRouter();
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
@@ -140,14 +140,21 @@ export default function OnboardingPage() {
     }
   }, [tonAddress, me.data?.wallet_address, log, me.data, updateMe]);
 
-  // Once wallet AND game are set, leave onboarding.
+  // Once a wallet is connected, leave onboarding. Game selection happens on
+  // the home lobby, not here — landing the user on a separate "pick a game"
+  // step right after connect was friction without value.
   useEffect(() => {
-    if (me.data?.wallet_address && me.data?.current_game_id) {
+    if (me.data?.wallet_address) {
       router.replace("/");
     }
-  }, [me.data?.wallet_address, me.data?.current_game_id, router]);
+  }, [me.data?.wallet_address, router]);
 
-  const walletConnected = !!(tonAddress || me.data?.wallet_address);
+  // `walletConnected` is the LIVE bridge state, not the saved row. The saved
+  // wallet_address fallback we used to OR in here was the source of the
+  // "Switch" bug: after disconnect() the bridge was gone but the saved
+  // address kept the UI in the connected branch. Pin it strictly to
+  // tonAddress so the picker reappears the moment we drop the bridge.
+  const walletConnected = !!tonAddress;
   const shortAddr = (a: string) => `${a.slice(0, 6)}…${a.slice(-6)}`;
 
   function handleConnect() {
@@ -198,6 +205,17 @@ export default function OnboardingPage() {
       await tonConnectUI.disconnect();
     } catch (e) {
       log("error", `disconnect threw: ${String(e)}`);
+    }
+    // Clear the persisted wallet on the server too. Otherwise me.data still
+    // holds the old address, which downstream gates (queue page, accept,
+    // ConnectGate fallback) treat as "still connected" and the UI never
+    // shows the picker again.
+    try {
+      await updateMe.mutateAsync({ wallet_address: null });
+      qc.invalidateQueries({ queryKey: ["me"] });
+      log("info", "cleared server wallet_address");
+    } catch (e) {
+      log("error", `clearing wallet_address failed: ${String(e)}`);
     }
   }
 
@@ -307,38 +325,6 @@ export default function OnboardingPage() {
                 Tonkeeper · MyTonWallet · Tonhub · Wallet · +30 more
               </p>
             </>
-          )}
-        </section>
-
-        {/* STEP 2 — game */}
-        <section className={`card p-5 ${walletConnected ? "" : "opacity-50 pointer-events-none"}`}>
-          <div className="flex items-center gap-3 mb-3">
-            <StepBadge n={2} done={!!me.data?.current_game_id} />
-            <h2 className="font-display text-lg tracking-[0.18em] uppercase text-white">
-              Pick your game
-            </h2>
-          </div>
-
-          {games.isLoading ? (
-            <SpinnerBlock label="Loading games" />
-          ) : (
-            <div className="grid grid-cols-2 gap-3">
-              {games.data?.map((g) => {
-                const isActive = me.data?.current_game_id === g.id;
-                return (
-                  <button
-                    key={g.id}
-                    onClick={() => updateMe.mutate({ current_game_id: g.id })}
-                    className={`game-tile ${isActive ? "is-active" : ""}`}
-                  >
-                    <span className="block text-white/95">{g.name}</span>
-                    <span className="block mt-1 text-[0.7rem] tracking-[0.18em] uppercase text-white/45">
-                      {isActive ? "selected" : "tap to pick"}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
           )}
         </section>
 

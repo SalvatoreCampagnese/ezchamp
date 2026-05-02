@@ -1,6 +1,7 @@
 "use client";
 
 import { CHAIN, useTonConnectUI } from "@tonconnect/ui-react";
+import { Address } from "@ton/core";
 
 export const ESCROW = process.env.NEXT_PUBLIC_TON_ESCROW_ADDRESS ?? "";
 // Hard-coded to TESTNET for the entire app while we're pre-launch. Flip back
@@ -14,6 +15,27 @@ export const ENTRY_FEE_TON = Number(process.env.NEXT_PUBLIC_ENTRY_FEE_TON ?? "1.
 
 export function tonToNano(ton: number): string {
   return Math.floor(ton * 1e9).toString();
+}
+
+/**
+ * TonConnect accepts any valid address form, but on testnet a *bounceable*
+ * (`EQ…`) destination triggers Tonkeeper's "we couldn't emulate the
+ * transaction" warning when the receiver hasn't been touched on-chain yet
+ * — the wallet thinks the message will bounce. Re-encode to the
+ * non-bounceable form (`UQ…` / `0Q…`) so the wallet emulates cleanly and
+ * stops scaring the user with a "Failed" button.
+ */
+export function normalizeReceiver(addr: string): string {
+  if (!addr) return addr;
+  try {
+    return Address.parse(addr).toString({
+      bounceable: false,
+      testOnly: NETWORK === "testnet",
+      urlSafe: true,
+    });
+  } catch {
+    return addr;
+  }
 }
 
 export function memoForMatch(matchId: string): string {
@@ -38,7 +60,7 @@ export function useSendStake() {
       network: CHAIN.TESTNET,
       messages: [
         {
-          address: ESCROW,
+          address: normalizeReceiver(ESCROW),
           amount: tonToNano(amountTon),
           payload: textCommentBoc(memoForMatch(matchId)),
         },
@@ -62,7 +84,7 @@ export function useSendEntryFee() {
       network: CHAIN.TESTNET,
       messages: [
         {
-          address: ESCROW,
+          address: normalizeReceiver(ESCROW),
           amount: tonToNano(amountTon),
           payload: textCommentBoc(memoForQueueEntry(entryId)),
         },
