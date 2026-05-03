@@ -18,6 +18,22 @@ export function tonToNano(ton: number): string {
 }
 
 /**
+ * True iff two TON addresses refer to the same account, regardless of which
+ * surface form they're written in (raw `0:…`, bounceable `EQ…`,
+ * non-bounceable `UQ…`, with or without the testOnly bit). Compares
+ * workchain + 256-bit hash via @ton/core. Returns false for any unparseable
+ * input — never throws.
+ */
+export function addressEquals(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false;
+  try {
+    return Address.parse(a).equals(Address.parse(b));
+  } catch {
+    return false;
+  }
+}
+
+/**
  * TonConnect accepts any valid address form, but on testnet a *bounceable*
  * (`EQ…`) destination triggers Tonkeeper's "we couldn't emulate the
  * transaction" warning when the receiver hasn't been touched on-chain yet
@@ -91,6 +107,35 @@ export function useSendEntryFee() {
       ],
     });
     return result;
+  };
+}
+
+/**
+ * Admin-only helper: send a payout from the connected escrow wallet.
+ *
+ * Returns the raw BOC string from the wallet, which the caller hands back
+ * to the server's confirm endpoint. The server records it as the tx hash
+ * for the audit trail. The caller must have already verified that the
+ * connected wallet equals the escrow — this helper does NOT check.
+ */
+export function useSendPayout() {
+  const [tonConnectUI] = useTonConnectUI();
+  return async (recipient: string, amountTon: number, comment: string) => {
+    const result = await tonConnectUI.sendTransaction({
+      validUntil: Math.floor(Date.now() / 1000) + 600,
+      network: CHAIN.TESTNET,
+      messages: [
+        {
+          // Recipient should be paid in non-bounceable form for the same
+          // emulation reason as user stakes — a fresh winner wallet may
+          // never have been touched on-chain.
+          address: normalizeReceiver(recipient),
+          amount: tonToNano(amountTon),
+          payload: textCommentBoc(comment),
+        },
+      ],
+    });
+    return result; // { boc: "..." }
   };
 }
 

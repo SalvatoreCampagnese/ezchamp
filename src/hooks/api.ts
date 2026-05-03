@@ -343,6 +343,89 @@ export const useAdminDisputeChat = (
     refetchInterval: 3_000,
   });
 
+// ─── Payouts ──────────────────────────────────────────────────────────────
+
+export interface MatchPayout {
+  id: string;
+  user_id: string;
+  amount_ton: string;
+  status: "pending" | "confirmed" | "failed";
+  tx_hash: string | null;
+  created_at: string;
+  signed_at: string | null;
+}
+
+export const useMatchPayout = (matchId: string) =>
+  useQuery({
+    queryKey: ["match", matchId, "payout"],
+    queryFn: () =>
+      api<{ payout: MatchPayout | null }>(`/api/matches/${matchId}/payout`),
+    select: (d) => d.payout,
+    refetchInterval: 5_000,
+  });
+
+export interface PreparedPayout {
+  transaction_id: string;
+  recipient_address: string;
+  amount_ton: string;
+  comment: string;
+  status: "pending" | "confirmed" | "failed";
+  tx_hash: string | null;
+}
+
+export const usePrepareMatchPayout = (matchId: string) =>
+  useMutation({
+    mutationFn: () =>
+      api<{ prepared: PreparedPayout }>(
+        `/api/admin/matches/${matchId}/payout/prepare`,
+        { method: "POST" },
+      ),
+  });
+
+export const useConfirmMatchPayout = (matchId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (tx_hash: string) =>
+      api<{ payout: MatchPayout }>(
+        `/api/admin/matches/${matchId}/payout/confirm`,
+        { method: "POST", body: JSON.stringify({ tx_hash }) },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["match", matchId, "payout"] });
+      qc.invalidateQueries({ queryKey: ["admin", "payouts"] });
+    },
+  });
+};
+
+export interface AdminPayoutItem {
+  id: string;
+  match_id: string;
+  amount_ton: string;
+  status: string;
+  created_at: string;
+  signed_at: string | null;
+  signed_by_user_id: string | null;
+  user: { id: string; telegram_username: string | null; wallet_address: string | null } | null;
+  match: {
+    id: string;
+    status: string;
+    stake_ton: string;
+    players_per_side: number;
+    best_of: number;
+    winner_team_id: string;
+    poster_team: { id: string; name: string } | null;
+    accepter_team: { id: string; name: string } | null;
+  } | null;
+}
+
+export const useAdminPayouts = () =>
+  useQuery({
+    queryKey: ["admin", "payouts"],
+    queryFn: () => api<{ payouts: AdminPayoutItem[] }>("/api/admin/payouts"),
+    select: (d) => d.payouts,
+    refetchInterval: 10_000,
+  });
+
 export const useSendAdminDisputeMessage = (disputeId: string) => {
   const qc = useQueryClient();
   return useMutation({

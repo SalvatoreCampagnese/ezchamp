@@ -219,13 +219,22 @@ export function AppShell({
                 );
               })}
               {me.data?.is_admin && (
-                <button
-                  onClick={() => router.push("/admin/disputes")}
-                  className={`sidebar-link ${pathname?.startsWith("/admin") ? "is-active" : ""}`}
-                >
-                  <span className="sidebar-link-icon"><IconShield /></span>
-                  <span className="flex-1 text-left">Staff · Disputes</span>
-                </button>
+                <>
+                  <button
+                    onClick={() => router.push("/admin/disputes")}
+                    className={`sidebar-link ${pathname?.startsWith("/admin/disputes") ? "is-active" : ""}`}
+                  >
+                    <span className="sidebar-link-icon"><IconShield /></span>
+                    <span className="flex-1 text-left">Staff · Disputes</span>
+                  </button>
+                  <button
+                    onClick={() => router.push("/admin/payouts")}
+                    className={`sidebar-link ${pathname?.startsWith("/admin/payouts") ? "is-active" : ""}`}
+                  >
+                    <span className="sidebar-link-icon"><IconShield /></span>
+                    <span className="flex-1 text-left">Staff · Payouts</span>
+                  </button>
+                </>
               )}
             </nav>
 

@@ -5,11 +5,13 @@ import { useParams, useRouter } from "next/navigation";
 import { ConnectGate } from "@/components/ConnectGate";
 import { AppShell } from "@/components/AppShell";
 import { SpinnerBlock } from "@/components/Spinner";
+import { useTonAddress } from "@tonconnect/ui-react";
 import {
-  useMatch, useMatchDisputeChat, useMe, useOpenDispute, useReportResult,
+  useConfirmMatchPayout, useMatch, useMatchDisputeChat, useMatchPayout,
+  useMe, useOpenDispute, usePrepareMatchPayout, useReportResult,
   useSendMatchDisputeMessage, useTeam,
 } from "@/hooks/api";
-import { useSendStake, ESCROW } from "@/lib/ton";
+import { addressEquals, useSendPayout, useSendStake, ESCROW } from "@/lib/ton";
 import { api } from "@/lib/api-client";
 import { DisputeChat } from "@/components/DisputeChat";
 
@@ -202,13 +204,16 @@ function Match() {
       )}
 
       {m.status === "completed" && (
-        <section className="card p-5 text-center">
-          <div className="text-3xl mb-1">🏆</div>
-          <div className="headline-glitch text-2xl">
-            {m.winner_team_id === m.poster_team_id ? m.poster_team?.name : m.accepter_team?.name}
-          </div>
-          <div className="text-[0.7rem] uppercase tracking-[0.18em] text-white/45 mt-1">Match complete</div>
-        </section>
+        <>
+          <section className="card p-5 text-center">
+            <div className="text-3xl mb-1">🏆</div>
+            <div className="headline-glitch text-2xl">
+              {m.winner_team_id === m.poster_team_id ? m.poster_team?.name : m.accepter_team?.name}
+            </div>
+            <div className="text-[0.7rem] uppercase tracking-[0.18em] text-white/45 mt-1">Match complete</div>
+          </section>
+          <PayoutPanel matchId={m.id} isAdmin={!!me.data?.is_admin} />
+        </>
       )}
       {/* Disputed view (banner + tabs + chat/details) is rendered above
           in place of the standard header. A non-team viewer still gets the
@@ -278,6 +283,116 @@ function Match() {
         </Overlay>
       )}
     </div>
+  );
+}
+
+/**
+ * Payout panel for completed matches.
+ *
+ * For everyone: shows the on-chain status (none / pending / confirmed) plus
+ * a tonviewer link once a tx hash exists. For admins whose live TonConnect
+ * wallet equals the configured escrow, surfaces a "Send payout via wallet"
+ * button that drives the prepare → wallet sign → confirm flow.
+ *
+ * Security gates:
+ *   - Server-side `withAdmin` + persisted-wallet match (in /prepare).
+ *   - Client-side live-wallet match (here, before opening the wallet).
+ *   - Idempotent DB row + RPC-enforced signer check (prevents racing).
+ */
+function PayoutPanel({ matchId, isAdmin }: { matchId: string; isAdmin: boolean }) {
+  const payout = useMatchPayout(matchId);
+  const prepare = usePrepareMatchPayout(matchId);
+  const confirm = useConfirmMatchPayout(matchId);
+  const sendPayout = useSendPayout();
+  const tonAddress = useTonAddress();
+  const [sending, setSending] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const liveWalletIsEscrow = !!ESCROW && addressEquals(tonAddress, ESCROW);
+  const p = payout.data;
+  const alreadyPaid = p?.status === "confirmed";
+
+  const onSend = async () => {
+    setErr(null);
+    setSending(true);
+    try {
+      const { prepared } = await prepare.mutateAsync();
+      if (prepared.status === "confirmed") {
+        return; // server says it's already paid; refetch will reflect.
+      }
+      const result = await sendPayout(
+        prepared.recipient_address,
+        Number(prepared.amount_ton),
+        prepared.comment,
+      );
+      const txHash = result?.boc?.slice(0, 64) ?? "";
+      if (!txHash) throw new Error("wallet returned no boc");
+      await confirm.mutateAsync(txHash);
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <section className="card p-4 flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="label-display">Payout</span>
+        {alreadyPaid ? (
+          <span className="pill is-done">Paid</span>
+        ) : p?.status === "pending" ? (
+          <span className="pill is-pending">Pending</span>
+        ) : (
+          <span className="pill is-open">Not yet</span>
+        )}
+      </div>
+
+      {p && (
+        <div className="text-[0.75rem] text-white/65">
+          <div>Amount: <span className="text-white">{Number(p.amount_ton)} TON</span></div>
+          {p.tx_hash && (
+            <div className="mt-1 break-all">
+              Tx:{" "}
+              <a
+                href={`https://testnet.tonviewer.com/transaction/${p.tx_hash}`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-neon-cyan"
+              >
+                {p.tx_hash.slice(0, 16)}…
+              </a>
+            </div>
+          )}
+        </div>
+      )}
+
+      {isAdmin && !alreadyPaid && (
+        <>
+          {!liveWalletIsEscrow ? (
+            <p className="text-[0.7rem] text-yellow-300">
+              Connect the escrow wallet ({ESCROW.slice(0, 6)}…{ESCROW.slice(-4)}) to send the payout.
+            </p>
+          ) : (
+            <button
+              onClick={onSend}
+              disabled={sending}
+              className="btn-neon"
+            >
+              {sending ? "Signing in wallet…" : "⚡ Send payout via wallet"}
+            </button>
+          )}
+        </>
+      )}
+
+      {!isAdmin && p?.status === "pending" && (
+        <p className="text-[0.7rem] text-white/55">
+          Awaiting staff signature — funds will be released shortly.
+        </p>
+      )}
+
+      {err && <p className="text-red-400 text-[0.75rem]">⚠ {err}</p>}
+    </section>
   );
 }
 
